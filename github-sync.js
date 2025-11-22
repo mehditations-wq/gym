@@ -179,29 +179,11 @@ class GitHubSync {
     }
 
     // Export videos (only metadata, not full data due to size limits)
+    // Videos are now stored in Firebase Storage, so we export URLs from tasks
     async exportVideos() {
-        if (!db.db) {
-            return [];
-        }
-        
-        return new Promise((resolve, reject) => {
-            const transaction = db.db.transaction(['videos'], 'readonly');
-            const store = transaction.objectStore('videos');
-            const request = store.getAll();
-
-            request.onsuccess = () => {
-                const videos = request.result || [];
-                // Only export video metadata, not the full base64 data
-                // Full videos will remain in IndexedDB for now
-                resolve(videos.map(v => ({
-                    id: v.id,
-                    fileName: v.fileName,
-                    // Note: Full video data is too large for Gist, keeping in IndexedDB
-                    hasVideo: true
-                })));
-            };
-            request.onerror = () => reject(request.error);
-        });
+        // Videos are now stored with tasks (videoUrl field)
+        // This function is kept for backward compatibility but returns empty array
+        return [];
     }
 
     // Import data into IndexedDB
@@ -222,13 +204,22 @@ class GitHubSync {
                     const existingById = await db.getMuscleGroupById(group.id);
                     const existingByName = existingGroups.find(g => g.name.toLowerCase() === group.name.toLowerCase());
                     
-                    if (!existingById && !existingByName) {
+                    if (existingById) {
+                        // Update existing group (preserve orderIndex if newer)
+                        if (group.lastModified && (!existingById.lastModified || group.lastModified > existingById.lastModified)) {
+                            existingById.name = group.name;
+                            existingById.orderIndex = group.orderIndex !== undefined ? group.orderIndex : existingById.orderIndex;
+                            await db.updateMuscleGroup(existingById);
+                            importedCount.muscleGroups++;
+                        }
+                    } else if (!existingByName) {
                         // New group, insert it
-                        await db.insertMuscleGroup({ name: group.name });
+                        await db.insertMuscleGroup({ 
+                            name: group.name,
+                            orderIndex: group.orderIndex
+                        });
                         importedCount.muscleGroups++;
                     }
-                    // If group exists (by ID or name), we keep the local one
-                    // Muscle groups are static, so we don't need to update them
                 }
             }
 
@@ -276,6 +267,9 @@ class GitHubSync {
                         existingByName.instructions = task.instructions;
                         existingByName.tips = task.tips;
                         existingByName.videoFileName = task.videoFileName;
+                        existingByName.videoUrl = task.videoUrl; // Include Firebase URL
+                        existingByName.defaultSets = task.defaultSets || 3;
+                        existingByName.defaultReps = task.defaultReps || 10;
                         existingByName.orderIndex = task.orderIndex;
                         await db.updateTask(existingByName);
                         importedCount.tasks++;

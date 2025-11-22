@@ -5,14 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gym Tracker</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
 </head>
 <body>
     <!-- Home Screen -->
     <div id="home-screen" class="screen active">
         <header class="app-header">
             <h1>Gym Tracker</h1>
-            <button class="text-button" onclick="navigate('sync')" id="sync-status-button">⚙️ Sync</button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span id="sync-warning" style="display: none; color: orange; font-size: 20px;" title="Sync needed">⚠️</span>
+                <button class="text-button" onclick="navigate('sync')" id="sync-status-button">⚙️ Sync</button>
+            </div>
         </header>
+        <div style="padding: 8px 16px;">
+            <button class="outlined-button" onclick="showAddMuscleGroupDialog()" style="width: 100%; margin-bottom: 8px;">+ Add Workout</button>
+            <button class="outlined-button" onclick="showManageMuscleGroups()" style="width: 100%;">Manage Workouts</button>
+        </div>
         <div id="muscle-groups-grid" class="muscle-groups-grid">
             <!-- Muscle groups will be dynamically inserted here -->
         </div>
@@ -60,8 +70,14 @@
                 <button class="primary-button" onclick="syncToGitHub()">Upload to GitHub</button>
                 <button class="outlined-button" onclick="syncFromGitHub()">Download from GitHub</button>
                 <button class="outlined-button" onclick="disconnectGitHub()">Disconnect</button>
-                <p id="last-sync-time" class="help-text"></p>
+                <p id="last-sync-time" class="help-text" style="font-weight: 500; margin-top: 16px;"></p>
                 <p id="sync-status-info" class="help-text" style="margin-top: 8px; font-size: 12px;"></p>
+                <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-color);">
+                    <h3>Video Sync (Firebase Storage)</h3>
+                    <p class="help-text">Configure Firebase Storage to sync videos across devices.</p>
+                    <p id="firebase-status" class="help-text" style="margin: 8px 0;"></p>
+                    <button class="outlined-button" onclick="showFirebaseConfigDialog()" id="firebase-config-button">Configure Firebase</button>
+                </div>
             </div>
 
             <div id="sync-info" class="sync-info">
@@ -130,6 +146,12 @@
                 <textarea id="task-instructions" placeholder="Enter instructions (optional)" rows="8"></textarea>
             </div>
             <div id="step-4" class="step">
+                <label>Default Sets</label>
+                <input type="number" id="task-default-sets" placeholder="Default number of sets" min="1" value="3" />
+                <label style="margin-top: 16px;">Default Reps per Set</label>
+                <input type="number" id="task-default-reps" placeholder="Default reps per set" min="1" value="10" />
+            </div>
+            <div id="step-5" class="step">
                 <label>Video (Optional)</label>
                 <input type="file" id="task-video" accept="video/*" />
                 <p class="help-text">Select a video file to attach to this exercise</p>
@@ -182,6 +204,14 @@
                 <textarea id="edit-task-instructions" placeholder="Enter instructions (optional)" rows="8"></textarea>
             </div>
             <div class="edit-field">
+                <label>Default Sets</label>
+                <input type="number" id="edit-task-default-sets" placeholder="Default number of sets" min="1" />
+            </div>
+            <div class="edit-field">
+                <label>Default Reps per Set</label>
+                <input type="number" id="edit-task-default-reps" placeholder="Default reps per set" min="1" />
+            </div>
+            <div class="edit-field">
                 <label>Video (Optional)</label>
                 <input type="file" id="edit-task-video" accept="video/*" />
                 <p class="help-text">Select a new video file to replace the current one (optional)</p>
@@ -217,6 +247,95 @@
         </div>
     </div>
 
+    <!-- Add Muscle Group Dialog -->
+    <div id="add-muscle-group-dialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog">
+            <h3>Add New Workout</h3>
+            <input type="text" id="new-muscle-group-name" placeholder="Enter workout name" style="width: 100%; padding: 12px; margin: 16px 0; border: 2px solid var(--border-color); border-radius: 8px; font-size: 16px;" />
+            <div class="dialog-buttons">
+                <button class="outlined-button" onclick="closeAddMuscleGroupDialog()">Cancel</button>
+                <button class="primary-button" onclick="saveNewMuscleGroup()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Muscle Groups Screen -->
+    <div id="manage-muscle-groups-screen" class="screen">
+        <header class="app-header">
+            <button class="back-button" onclick="navigate('home')">← Back</button>
+            <h1>Manage Workouts</h1>
+        </header>
+        <div class="edit-content">
+            <div id="muscle-groups-list" class="tasks-list">
+                <!-- Muscle groups will be dynamically inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit History Entry Dialog -->
+    <div id="edit-history-entry-dialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog" style="max-width: 500px;">
+            <h3>Edit Workout Entry</h3>
+            <div class="edit-field">
+                <label>Sets</label>
+                <input type="number" id="edit-entry-sets" min="1" />
+            </div>
+            <div class="edit-field">
+                <label>Reps</label>
+                <input type="number" id="edit-entry-reps" min="1" />
+            </div>
+            <div class="edit-field">
+                <label>Weight (kg)</label>
+                <input type="number" id="edit-entry-weight" step="0.1" min="0" />
+            </div>
+            <div class="edit-field">
+                <label>Date</label>
+                <input type="datetime-local" id="edit-entry-date" />
+            </div>
+            <div class="dialog-buttons">
+                <button class="outlined-button" onclick="closeEditHistoryEntryDialog()">Cancel</button>
+                <button class="primary-button delete-button" onclick="deleteHistoryEntry()" style="background-color: var(--error-color);">Delete</button>
+                <button class="primary-button" onclick="saveEditedHistoryEntry()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Config Dialog -->
+    <div id="firebase-config-dialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog" style="max-width: 600px;">
+            <h3>Firebase Storage Setup</h3>
+            <p class="help-text">Configure Firebase Storage to sync videos across devices. Get your config from Firebase Console.</p>
+            <div class="edit-field">
+                <label>API Key</label>
+                <input type="text" id="firebase-api-key" placeholder="AIza..." />
+            </div>
+            <div class="edit-field">
+                <label>Auth Domain</label>
+                <input type="text" id="firebase-auth-domain" placeholder="your-project.firebaseapp.com" />
+            </div>
+            <div class="edit-field">
+                <label>Project ID</label>
+                <input type="text" id="firebase-project-id" placeholder="your-project-id" />
+            </div>
+            <div class="edit-field">
+                <label>Storage Bucket</label>
+                <input type="text" id="firebase-storage-bucket" placeholder="your-project.appspot.com" />
+            </div>
+            <div class="edit-field">
+                <label>Messaging Sender ID</label>
+                <input type="text" id="firebase-messaging-sender-id" placeholder="123456789" />
+            </div>
+            <div class="edit-field">
+                <label>App ID</label>
+                <input type="text" id="firebase-app-id" placeholder="1:123456789:web:abc123" />
+            </div>
+            <div class="dialog-buttons">
+                <button class="outlined-button" onclick="closeFirebaseConfigDialog()">Cancel</button>
+                <button class="primary-button" onclick="saveFirebaseConfig()">Save</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Delete Confirmation Dialog -->
     <div id="delete-dialog" class="dialog-overlay" style="display: none;">
         <div class="dialog">
@@ -230,6 +349,7 @@
     </div>
 
     <script src="database.js"></script>
+    <script src="firebase-storage.js"></script>
     <script src="github-sync.js"></script>
     <script src="app.js"></script>
 </body>

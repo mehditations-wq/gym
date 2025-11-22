@@ -3,7 +3,7 @@ class GymDatabase {
     constructor() {
         this.db = null;
         this.dbName = 'GymTrackerDB';
-        this.dbVersion = 1;
+        this.dbVersion = 2; // Increment version for new stores
     }
 
     async init() {
@@ -18,6 +18,7 @@ class GymDatabase {
 
             request.onupgradeneeded = (event) => {
                 const db = event.target.result;
+                const oldVersion = event.oldVersion || 0;
 
                 // Muscle Groups store
                 if (!db.objectStoreNames.contains('muscleGroups')) {
@@ -42,8 +43,25 @@ class GymDatabase {
                 if (!db.objectStoreNames.contains('videos')) {
                     db.createObjectStore('videos', { keyPath: 'id', autoIncrement: true });
                 }
+
+                // Sync Queue store (added in version 2)
+                if (oldVersion < 2 && !db.objectStoreNames.contains('syncQueue')) {
+                    const queueStore = db.createObjectStore('syncQueue', { keyPath: 'id', autoIncrement: true });
+                    queueStore.createIndex('timestamp', 'timestamp', { unique: false });
+                    queueStore.createIndex('status', 'status', { unique: false });
+                }
             };
         });
+    }
+
+    // Device ID generation
+    getDeviceId() {
+        let deviceId = localStorage.getItem('device_id');
+        if (!deviceId) {
+            deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            localStorage.setItem('device_id', deviceId);
+        }
+        return deviceId;
     }
 
     // Muscle Groups
@@ -73,9 +91,75 @@ class GymDatabase {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['muscleGroups'], 'readwrite');
             const store = transaction.objectStore('muscleGroups');
-            const request = store.add(muscleGroup);
+            
+            // Add metadata
+            muscleGroup.lastModified = Date.now();
+            muscleGroup.deviceId = this.getDeviceId();
+            if (!muscleGroup.orderIndex) {
+                // Get max orderIndex and add 1
+                this.getAllMuscleGroups().then(groups => {
+                    const maxOrder = groups.length > 0 
+                        ? Math.max(...groups.map(g => g.orderIndex || 0))
+                        : -1;
+                    muscleGroup.orderIndex = maxOrder + 1;
+                    const request = store.add(muscleGroup);
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+            } else {
+                const request = store.add(muscleGroup);
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            }
+        });
+    }
 
-            request.onsuccess = () => resolve(request.result);
+    async updateMuscleGroup(muscleGroup) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['muscleGroups'], 'readwrite');
+            const store = transaction.objectStore('muscleGroups');
+            
+            muscleGroup.lastModified = Date.now();
+            muscleGroup.deviceId = this.getDeviceId();
+            
+            const request = store.put(muscleGroup);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async deleteMuscleGroup(id) {
+        return new Promise(async (resolve, reject) => {
+            try {
+                // Delete all tasks and log entries for this muscle group
+                const tasks = await this.getTasksByMuscleGroup(id);
+                for (const task of tasks) {
+                    await this.deleteTask(task.id);
+                }
+                
+                // Delete the muscle group
+                const transaction = this.db.transaction(['muscleGroups'], 'readwrite');
+                const store = transaction.objectStore('muscleGroups');
+                const request = store.delete(id);
+                request.onsuccess = () => resolve();
+                request.onerror = () => reject(request.error);
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    async getAllMuscleGroups() {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['muscleGroups'], 'readonly');
+            const store = transaction.objectStore('muscleGroups');
+            const request = store.getAll();
+
+            request.onsuccess = () => {
+                const groups = request.result || [];
+                groups.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                resolve(groups);
+            };
             request.onerror = () => reject(request.error);
         });
     }
@@ -126,8 +210,11 @@ class GymDatabase {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['tasks'], 'readwrite');
             const store = transaction.objectStore('tasks');
+            
+            task.lastModified = Date.now();
+            task.deviceId = this.getDeviceId();
+            
             const request = store.add(task);
-
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
         });
@@ -137,8 +224,11 @@ class GymDatabase {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['tasks'], 'readwrite');
             const store = transaction.objectStore('tasks');
+            
+            task.lastModified = Date.now();
+            task.deviceId = this.getDeviceId();
+            
             const request = store.put(task);
-
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
@@ -220,10 +310,82 @@ class GymDatabase {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['logEntries'], 'readwrite');
             const store = transaction.objectStore('logEntries');
+            
+            logEntry.lastModified = Date.now();
+            logEntry.deviceId = this.getDeviceId();
+            
             const request = store.add(logEntry);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async updateLogEntry(logEntry) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['logEntries'], 'readwrite');
+            const store = transaction.objectStore('logEntries');
+            
+            logEntry.lastModified = Date.now();
+            logEntry.deviceId = this.getDeviceId();
+            
+            const request = store.put(logEntry);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async getLogEntryById(id) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['logEntries'], 'readonly');
+            const store = transaction.objectStore('logEntries');
+            const request = store.get(id);
 
             request.onsuccess = () => resolve(request.result);
             request.onerror = () => reject(request.error);
+        });
+    }
+
+    async deleteLogEntry(id) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['logEntries'], 'readwrite');
+            const store = transaction.objectStore('logEntries');
+            const request = store.delete(id);
+
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    // Check if workout completed today for a muscle group
+    async isWorkoutCompletedToday(muscleGroupId) {
+        return new Promise(async (resolve, reject) => {
+            try {
+                const tasks = await this.getTasksByMuscleGroup(muscleGroupId);
+                if (tasks.length === 0) {
+                    resolve(false);
+                    return;
+                }
+
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const todayStart = today.getTime();
+                const todayEnd = todayStart + 24 * 60 * 60 * 1000;
+
+                // Check if all tasks have entries today
+                for (const task of tasks) {
+                    const entries = await this.getLogEntriesByTask(task.id);
+                    const todayEntries = entries.filter(e => 
+                        e.date >= todayStart && e.date < todayEnd
+                    );
+                    if (todayEntries.length === 0) {
+                        resolve(false);
+                        return;
+                    }
+                }
+                resolve(true);
+            } catch (error) {
+                reject(error);
+            }
         });
     }
 
@@ -281,6 +443,71 @@ class GymDatabase {
                 }
             };
             request.onerror = () => reject(request.error);
+        });
+    }
+
+    // Sync Queue operations
+    async addToSyncQueue(operation, entityType, entityData) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['syncQueue'], 'readwrite');
+            const store = transaction.objectStore('syncQueue');
+            const request = store.add({
+                operation,
+                entityType,
+                entityData: entityData,
+                timestamp: Date.now(),
+                retries: 0,
+                status: 'pending',
+                lastError: null
+            });
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async getSyncQueue(status = null) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['syncQueue'], 'readonly');
+            const store = transaction.objectStore('syncQueue');
+            const request = status 
+                ? store.index('status').getAll(status)
+                : store.getAll();
+            request.onsuccess = () => {
+                const items = request.result || [];
+                items.sort((a, b) => a.timestamp - b.timestamp);
+                resolve(items);
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async removeFromSyncQueue(id) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['syncQueue'], 'readwrite');
+            const store = transaction.objectStore('syncQueue');
+            const request = store.delete(id);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async updateSyncQueueItem(id, updates) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['syncQueue'], 'readwrite');
+            const store = transaction.objectStore('syncQueue');
+            const getRequest = store.get(id);
+            getRequest.onsuccess = () => {
+                const item = getRequest.result;
+                if (!item) {
+                    reject(new Error('Queue item not found'));
+                    return;
+                }
+                Object.assign(item, updates);
+                const putRequest = store.put(item);
+                putRequest.onsuccess = () => resolve();
+                putRequest.onerror = () => reject(putRequest.error);
+            };
+            getRequest.onerror = () => reject(getRequest.error);
         });
     }
 }
