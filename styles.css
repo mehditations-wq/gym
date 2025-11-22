@@ -902,6 +902,38 @@ body {
     }
 }
 
+/* Database wipe button */
+.outlined-button[onclick="showDatabaseWipeDialog()"]:hover {
+    background-color: #8b0018 !important;
+    border-color: #8b0018 !important;
+}
+
+.outlined-button[onclick="showDatabaseWipeDialog()"]:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* History entry edit sets */
+#edit-entry-sets-container .set-row {
+    background: var(--background-color);
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+
+#edit-entry-sets-container .set-controls {
+    margin-top: 8px;
+}
+
+#edit-entry-sets-container .set-reps input,
+#edit-entry-sets-container .set-weight input {
+    width: 100%;
+    padding: 8px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 16px;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
     .muscle-groups-grid {

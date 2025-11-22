@@ -19,15 +19,6 @@ async function init() {
     await db.init();
     githubSync.init();
     
-    // Initialize Google Drive if configured
-    const clientId = googleDriveStorage.getClientId();
-    if (clientId) {
-        try {
-            await googleDriveStorage.init(clientId);
-        } catch (error) {
-            console.error('Google Drive initialization failed:', error);
-        }
-    }
     
     // Load last sync time
     lastSyncTime = localStorage.getItem('last_sync_time') ? parseInt(localStorage.getItem('last_sync_time')) : null;
@@ -162,7 +153,7 @@ async function saveNewMuscleGroup() {
         await db.addToSyncQueue('create', 'muscleGroup', { name });
         await autoSync();
         closeAddMuscleGroupDialog();
-        await showHomeScreen();
+        await loadMuscleGroupsList(); // Refresh the list in manage screen
     } catch (error) {
         console.error('Error saving muscle group:', error);
         alert('Failed to save workout. Please try again.');
@@ -182,7 +173,20 @@ async function showManageMuscleGroupsScreen() {
     screen.classList.add('active');
     
     isMuscleGroupOrderMode = false;
+    const orderToggle = document.getElementById('muscle-group-order-toggle');
+    if (orderToggle) {
+        orderToggle.textContent = 'ORDER';
+    }
     await loadMuscleGroupsList();
+}
+
+function toggleMuscleGroupOrderMode() {
+    isMuscleGroupOrderMode = !isMuscleGroupOrderMode;
+    const orderToggle = document.getElementById('muscle-group-order-toggle');
+    if (orderToggle) {
+        orderToggle.textContent = isMuscleGroupOrderMode ? 'DONE' : 'ORDER';
+    }
+    loadMuscleGroupsList();
 }
 
 async function loadMuscleGroupsList() {
@@ -469,34 +473,13 @@ async function saveTask() {
         const orderIndex = tasks.length;
         
         let videoFileName = null;
-        let videoUrl = null;
         
         if (videoFile) {
             videoFileName = `video_${Date.now()}_${videoFile.name}`;
             
-            // Try to upload to Google Drive if configured
-            if (googleDriveStorage.isConfigured()) {
-                try {
-                    // Ensure signed in
-                    if (!(await googleDriveStorage.isSignedIn())) {
-                        await googleDriveStorage.signIn();
-                    }
-                    const uploadResult = await googleDriveStorage.uploadVideo(videoFile, videoFileName);
-                    videoUrl = uploadResult.url;
-                    // Store fileId for later deletion
-                    const videoData = await fileToBase64(videoFile);
-                    await db.saveVideo(videoFileName, videoData);
-                } catch (error) {
-                    console.error('Google Drive upload failed, saving locally only:', error);
-                    // Fallback to local storage
-                    const videoData = await fileToBase64(videoFile);
-                    await db.saveVideo(videoFileName, videoData);
-                }
-            } else {
-                // Save locally only
-                const videoData = await fileToBase64(videoFile);
-                await db.saveVideo(videoFileName, videoData);
-            }
+            // Save video locally
+            const videoData = await fileToBase64(videoFile);
+            await db.saveVideo(videoFileName, videoData);
         }
         
         const task = {
@@ -505,7 +488,6 @@ async function saveTask() {
             instructions: instructions,
             tips: tips,
             videoFileName: videoFileName,
-            videoUrl: videoUrl,
             defaultSets: defaultSets,
             defaultReps: defaultReps,
             orderIndex: orderIndex
@@ -581,6 +563,7 @@ async function showWorkoutScreen() {
             sets: sets,
             isDone: false,
             isSkipped: false,
+            completedAt: null,
             lastThreeEntries: await db.getLastThreeEntries(task.id)
         };
     }
@@ -606,7 +589,7 @@ function renderWorkoutPages(tasks) {
 
 function createWorkoutPageContent(task) {
     const state = taskStates[task.id];
-    const hasVideo = state.task.videoFileName !== null || state.task.videoUrl !== null;
+    const hasVideo = state.task.videoFileName !== null;
     
     // Generate sets HTML
     const setsHtml = state.sets.map((set, index) => `
@@ -633,7 +616,7 @@ function createWorkoutPageContent(task) {
     return `
         <div class="workout-content-inner">
             ${hasVideo ? `
-                <button class="video-button" onclick="playVideo('${state.task.videoFileName || ''}', '${state.task.videoUrl || ''}')">
+                <button class="video-button" onclick="playVideo('${state.task.videoFileName || ''}')">
                     ▶ Play Video
                 </button>
             ` : ''}
@@ -779,70 +762,88 @@ function addSet(taskId) {
     showWorkoutPage(taskIndex);
 }
 
-async function completeTask(taskId) {
+function completeTask(taskId) {
     const state = taskStates[taskId];
     state.isDone = true;
-    
-    // Calculate totals for backward compatibility
-    const totalReps = state.sets.reduce((sum, set) => sum + set.reps, 0);
-    const avgWeight = state.sets.length > 0 
-        ? state.sets.reduce((sum, set) => sum + set.weightKg, 0) / state.sets.length 
-        : 0;
-    
-    const logEntry = {
-        taskId: taskId,
-        date: Date.now(),
-        sets: state.sets, // Store as array
-        reps: totalReps, // Keep for backward compatibility
-        weightKg: avgWeight, // Keep for backward compatibility
-        setCount: state.sets.length
-    };
-    
-    await db.insertLogEntry(logEntry);
-    await db.addToSyncQueue('create', 'logEntry', logEntry);
-    await autoSync();
+    state.isSkipped = false;
+    state.completedAt = Date.now(); // Store completion timestamp
     
     const tasks = Object.values(taskStates).map(s => s.task);
     const currentIndex = tasks.findIndex(t => t.id === taskId);
     
     updateWorkoutProgress();
+    updateWorkoutActions();
     
+    // Move to next task
     if (currentIndex < tasks.length - 1) {
         showWorkoutPage(currentIndex + 1);
-    } else {
-        // Check if all tasks are done
-        const allDone = tasks.every(t => taskStates[t.id].isDone);
-        const skippedTasks = tasks.filter(t => taskStates[t.id].isSkipped && !taskStates[t.id].isDone);
-        
-        if (allDone) {
-            showWorkoutCompleteDialog(true, []);
-        } else {
-            showWorkoutCompleteDialog(false, skippedTasks);
-        }
     }
 }
 
-async function skipTask(taskId) {
+function skipTask(taskId) {
     const state = taskStates[taskId];
     state.isSkipped = true;
+    state.isDone = false;
+    state.completedAt = Date.now(); // Store skip timestamp
     
     const tasks = Object.values(taskStates).map(s => s.task);
     const currentIndex = tasks.findIndex(t => t.id === taskId);
     
     updateWorkoutProgress();
+    updateWorkoutActions();
     
+    // Move to next task
     if (currentIndex < tasks.length - 1) {
         showWorkoutPage(currentIndex + 1);
-    } else {
-        // Check if all tasks are done
-        const allDone = tasks.every(t => taskStates[t.id].isDone);
-        const skippedTasks = tasks.filter(t => taskStates[t.id].isSkipped && !taskStates[t.id].isDone);
-        
-        if (allDone) {
-            showWorkoutCompleteDialog(true, []);
-        } else {
-            showWorkoutCompleteDialog(false, skippedTasks);
+    }
+}
+
+// Finish workout - save all entries at once
+async function finishWorkout() {
+    const tasks = Object.values(taskStates).map(s => s.task);
+    const skippedTasks = tasks.filter(t => taskStates[t.id].isSkipped && !taskStates[t.id].isDone);
+    
+    if (skippedTasks.length > 0) {
+        if (!confirm(`You have ${skippedTasks.length} skipped exercise${skippedTasks.length > 1 ? 's' : ''}. Do you want to finish anyway?`)) {
+            return;
         }
+    }
+    
+    const workoutDate = Date.now();
+    
+    // Save all completed tasks
+    for (const task of tasks) {
+        const state = taskStates[task.id];
+        
+        if (state.isDone && state.completedAt) {
+            // Calculate totals for backward compatibility
+            const totalReps = state.sets.reduce((sum, set) => sum + set.reps, 0);
+            const avgWeight = state.sets.length > 0 
+                ? state.sets.reduce((sum, set) => sum + set.weightKg, 0) / state.sets.length 
+                : 0;
+            
+            const logEntry = {
+                taskId: task.id,
+                date: state.completedAt, // Use the timestamp when DONE was clicked
+                sets: state.sets, // Store as array
+                reps: totalReps, // Keep for backward compatibility
+                weightKg: avgWeight, // Keep for backward compatibility
+                setCount: state.sets.length
+            };
+            
+            await db.insertLogEntry(logEntry);
+            await db.addToSyncQueue('create', 'logEntry', logEntry);
+        }
+    }
+    
+    await autoSync();
+    
+    // Show completion dialog
+    const allDone = tasks.every(t => taskStates[t.id].isDone);
+    if (allDone) {
+        showWorkoutCompleteDialog(true, []);
+    } else {
+        showWorkoutCompleteDialog(false, skippedTasks);
     }
 }
 
@@ -923,7 +924,7 @@ async function showEditTaskScreen() {
     document.getElementById('edit-task-video').value = '';
     
     const removeVideoButton = document.getElementById('remove-video-button');
-    if (task.videoFileName || task.videoUrl) {
+    if (task.videoFileName) {
         removeVideoButton.style.display = 'block';
     } else {
         removeVideoButton.style.display = 'none';
@@ -964,30 +965,9 @@ async function saveEditedTask() {
         if (videoFile) {
             const videoFileName = `video_${Date.now()}_${videoFile.name}`;
             
-            // Try to upload to Google Drive if configured
-            if (googleDriveStorage.isConfigured()) {
-                try {
-                    // Ensure signed in
-                    if (!(await googleDriveStorage.isSignedIn())) {
-                        await googleDriveStorage.signIn();
-                    }
-                    const uploadResult = await googleDriveStorage.uploadVideo(videoFile, videoFileName);
-                    task.videoUrl = uploadResult.url;
-                    // Store fileId for later deletion (we'll store it in videoFileName or a separate field)
-                    // Also save locally as fallback
-                    const videoData = await fileToBase64(videoFile);
-                    await db.saveVideo(videoFileName, videoData);
-                } catch (error) {
-                    console.error('Google Drive upload failed, saving locally only:', error);
-                    // Fallback to local storage
-                    const videoData = await fileToBase64(videoFile);
-                    await db.saveVideo(videoFileName, videoData);
-                }
-            } else {
-                // Save locally only
-                const videoData = await fileToBase64(videoFile);
-                await db.saveVideo(videoFileName, videoData);
-            }
+            // Save video locally
+            const videoData = await fileToBase64(videoFile);
+            await db.saveVideo(videoFileName, videoData);
             
             task.videoFileName = videoFileName;
         }
@@ -1013,20 +993,9 @@ async function removeVideoFromTask() {
         try {
             const task = await db.getTaskById(taskToEdit);
             if (task) {
-                // Try to delete from Google Drive if URL exists
-                if (task.videoUrl && googleDriveStorage.isConfigured()) {
-                    try {
-                        const fileId = googleDriveStorage.extractFileId(task.videoUrl);
-                        if (fileId) {
-                            await googleDriveStorage.deleteVideo(fileId);
-                        }
-                    } catch (error) {
-                        console.error('Failed to delete from Google Drive:', error);
-                    }
-                }
+                // Video is stored locally, deletion from database is handled by updateTask
                 
                 task.videoFileName = null;
-                task.videoUrl = null;
                 await db.updateTask(task);
                 await db.addToSyncQueue('update', 'task', task);
                 await autoSync();
@@ -1041,15 +1010,12 @@ async function removeVideoFromTask() {
     }
 }
 
-async function playVideo(videoFileName, videoUrl) {
+async function playVideo(videoFileName) {
     try {
         let videoSrc = null;
         
-        // Try Google Drive URL first (or any cloud URL)
-        if (videoUrl) {
-            videoSrc = videoUrl;
-        } else if (videoFileName) {
-            // Try local storage
+        // Get video from local storage
+        if (videoFileName) {
             const videoData = await db.getVideo(videoFileName);
             if (videoData) {
                 videoSrc = videoData;
@@ -1127,6 +1093,8 @@ async function showHistoryScreen() {
     }
 }
 
+let historyEntrySets = [];
+
 async function editHistoryEntry(entryId) {
     entryToEdit = entryId;
     const entry = await db.getLogEntryById(entryId);
@@ -1135,29 +1103,90 @@ async function editHistoryEntry(entryId) {
         return;
     }
     
-    // Handle both old and new format
+    // Initialize sets array
     if (Array.isArray(entry.sets)) {
-        // New format - show first set values (or allow editing all sets)
-        document.getElementById('edit-entry-sets').value = entry.sets.length;
-        document.getElementById('edit-entry-reps').value = entry.sets[0]?.reps || entry.reps;
-        document.getElementById('edit-entry-weight').value = entry.sets[0]?.weightKg || entry.weightKg;
+        historyEntrySets = entry.sets.map(s => ({ ...s })); // Deep copy
     } else {
-        // Old format
-        document.getElementById('edit-entry-sets').value = entry.sets || 1;
-        document.getElementById('edit-entry-reps').value = entry.reps || 0;
-        document.getElementById('edit-entry-weight').value = entry.weightKg || 0;
+        // Convert old format to new format
+        const setCount = entry.sets || 1;
+        historyEntrySets = [];
+        for (let i = 0; i < setCount; i++) {
+            historyEntrySets.push({
+                reps: entry.reps || 0,
+                weightKg: entry.weightKg || 0
+            });
+        }
     }
     
     const date = new Date(entry.date);
     const dateStr = date.toISOString().slice(0, 16);
     document.getElementById('edit-entry-date').value = dateStr;
     
+    renderHistoryEntrySets();
     document.getElementById('edit-history-entry-dialog').style.display = 'flex';
+}
+
+function renderHistoryEntrySets() {
+    const container = document.getElementById('edit-entry-sets-container');
+    container.innerHTML = '';
+    
+    historyEntrySets.forEach((set, index) => {
+        const setDiv = document.createElement('div');
+        setDiv.className = 'set-row';
+        setDiv.style.marginBottom = '12px';
+        setDiv.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+                <div class="set-label" style="min-width: 60px;">Set ${index + 1}</div>
+                <button class="outlined-button" onclick="removeSetFromHistoryEntry(${index})" style="padding: 4px 8px; font-size: 12px;">Remove</button>
+            </div>
+            <div class="set-controls">
+                <div class="set-reps">
+                    <label>Reps</label>
+                    <input type="number" id="edit-set-reps-${index}" value="${set.reps}" min="0" 
+                           onchange="updateHistoryEntrySet(${index}, 'reps', this.value)" />
+                </div>
+                <div class="set-weight">
+                    <label>Weight (kg)</label>
+                    <input type="number" id="edit-set-weight-${index}" value="${set.weightKg}" step="0.1" min="0"
+                           onchange="updateHistoryEntrySet(${index}, 'weight', this.value)" />
+                </div>
+            </div>
+        `;
+        container.appendChild(setDiv);
+    });
+}
+
+function updateHistoryEntrySet(index, field, value) {
+    if (historyEntrySets[index]) {
+        if (field === 'reps') {
+            historyEntrySets[index].reps = parseInt(value) || 0;
+        } else if (field === 'weight') {
+            historyEntrySets[index].weightKg = parseFloat(value) || 0;
+        }
+    }
+}
+
+function addSetToHistoryEntry() {
+    historyEntrySets.push({
+        reps: 10,
+        weightKg: 0
+    });
+    renderHistoryEntrySets();
+}
+
+function removeSetFromHistoryEntry(index) {
+    if (historyEntrySets.length > 1) {
+        historyEntrySets.splice(index, 1);
+        renderHistoryEntrySets();
+    } else {
+        alert('You must have at least one set');
+    }
 }
 
 function closeEditHistoryEntryDialog() {
     document.getElementById('edit-history-entry-dialog').style.display = 'none';
     entryToEdit = null;
+    historyEntrySets = [];
 }
 
 async function saveEditedHistoryEntry() {
@@ -1169,25 +1198,25 @@ async function saveEditedHistoryEntry() {
         return;
     }
     
-    const sets = parseInt(document.getElementById('edit-entry-sets').value) || 1;
-    const reps = parseInt(document.getElementById('edit-entry-reps').value) || 0;
-    const weight = parseFloat(document.getElementById('edit-entry-weight').value) || 0;
+    if (historyEntrySets.length === 0) {
+        alert('You must have at least one set');
+        return;
+    }
+    
     const dateStr = document.getElementById('edit-entry-date').value;
     const date = new Date(dateStr).getTime();
     
-    // Convert to new format (array of sets)
-    const setsArray = [];
-    for (let i = 0; i < sets; i++) {
-        setsArray.push({
-            reps: reps,
-            weightKg: weight
-        });
-    }
+    // Calculate totals for backward compatibility
+    const totalReps = historyEntrySets.reduce((sum, set) => sum + set.reps, 0);
+    const avgWeight = historyEntrySets.length > 0 
+        ? historyEntrySets.reduce((sum, set) => sum + set.weightKg, 0) / historyEntrySets.length 
+        : 0;
     
-    entry.sets = setsArray;
-    entry.reps = reps * sets; // Total reps
-    entry.weightKg = weight;
+    entry.sets = historyEntrySets;
+    entry.reps = totalReps; // Total reps
+    entry.weightKg = avgWeight;
     entry.date = date;
+    entry.setCount = historyEntrySets.length;
     
     await db.updateLogEntry(entry);
     await db.addToSyncQueue('update', 'logEntry', entry);
@@ -1449,31 +1478,6 @@ async function showSyncScreen() {
             lastSyncElement.textContent = 'Not synced yet';
         }
         
-        // Update Google Drive status
-        const googleDriveStatus = document.getElementById('google-drive-status');
-        const googleDriveButton = document.getElementById('google-drive-config-button');
-        const signInButton = document.getElementById('google-drive-signin-button');
-        
-        if (googleDriveStorage.isConfigured()) {
-            googleDriveStorage.isSignedIn().then(isSignedIn => {
-                if (isSignedIn) {
-                    googleDriveStatus.textContent = '✓ Google Drive configured and signed in';
-                    googleDriveStatus.style.color = 'green';
-                    googleDriveButton.textContent = 'Reconfigure Google Drive';
-                    signInButton.style.display = 'none';
-                } else {
-                    googleDriveStatus.textContent = '⚠ Google Drive configured but not signed in. Click "Sign In" to enable video sync.';
-                    googleDriveStatus.style.color = 'orange';
-                    googleDriveButton.textContent = 'Reconfigure Google Drive';
-                    signInButton.style.display = 'block';
-                }
-            });
-        } else {
-            googleDriveStatus.textContent = '⚠ Google Drive not configured. Videos will only be stored locally.';
-            googleDriveStatus.style.color = 'orange';
-            googleDriveButton.textContent = 'Configure Google Drive';
-            signInButton.style.display = 'none';
-        }
         
         // Show sync status info
         const gistId = githubSync.getGistId();
@@ -1636,60 +1640,86 @@ function disconnectGitHub() {
     }
 }
 
-// Google Drive Config Dialog
-function showGoogleDriveConfigDialog() {
-    const clientId = googleDriveStorage.getClientId();
-    if (clientId) {
-        document.getElementById('google-drive-client-id').value = clientId;
-    }
-    document.getElementById('google-drive-config-dialog').style.display = 'flex';
-}
 
-function closeGoogleDriveConfigDialog() {
-    document.getElementById('google-drive-config-dialog').style.display = 'none';
-}
-
-async function saveGoogleDriveConfig() {
-    const clientId = document.getElementById('google-drive-client-id').value.trim();
+// Database Wipe Functions
+function showDatabaseWipeDialog() {
+    document.getElementById('database-wipe-dialog').style.display = 'flex';
+    document.getElementById('wipe-confirm-input').value = '';
+    document.getElementById('confirm-wipe-button').disabled = true;
     
-    if (!clientId) {
-        alert('Please enter your OAuth Client ID');
+    // Enable button when user types "DELETE"
+    const confirmInput = document.getElementById('wipe-confirm-input');
+    const confirmButton = document.getElementById('confirm-wipe-button');
+    
+    confirmInput.oninput = () => {
+        confirmButton.disabled = confirmInput.value.trim().toUpperCase() !== 'DELETE';
+    };
+    
+    confirmInput.focus();
+}
+
+function closeDatabaseWipeDialog() {
+    document.getElementById('database-wipe-dialog').style.display = 'none';
+    document.getElementById('wipe-confirm-input').value = '';
+}
+
+async function confirmDatabaseWipe() {
+    const confirmText = document.getElementById('wipe-confirm-input').value.trim().toUpperCase();
+    if (confirmText !== 'DELETE') {
+        alert('Please type "DELETE" to confirm');
         return;
     }
     
-    if (!clientId.includes('.apps.googleusercontent.com')) {
-        if (!confirm('The Client ID should end with .apps.googleusercontent.com. Continue anyway?')) {
-            return;
-        }
-    }
-    
     try {
-        googleDriveStorage.setClientId(clientId);
-        await googleDriveStorage.init(clientId);
-        closeGoogleDriveConfigDialog();
-        showSyncScreen();
-        alert('Google Drive configured successfully! Please sign in to enable video sync.');
-    } catch (error) {
-        alert('Failed to configure Google Drive: ' + error.message);
-    }
-}
-
-async function signInGoogleDrive() {
-    try {
-        if (!googleDriveStorage.isConfigured()) {
-            alert('Please configure Google Drive first');
-            return;
+        // Close the database connection
+        if (db.db) {
+            db.db.close();
         }
         
-        await googleDriveStorage.signIn();
-        showSyncScreen();
-        alert('Successfully signed in to Google Drive!');
+        // Delete the database
+        const deleteRequest = indexedDB.deleteDatabase(db.dbName);
+        
+        await new Promise((resolve, reject) => {
+            deleteRequest.onsuccess = () => {
+                console.log('Database deleted successfully');
+                resolve();
+            };
+            deleteRequest.onerror = () => {
+                reject(deleteRequest.error);
+            };
+            deleteRequest.onblocked = () => {
+                console.warn('Database deletion blocked - may need to close all tabs');
+                // Still resolve, the database will be deleted when unblocked
+                resolve();
+            };
+        });
+        
+        // Clear localStorage items related to the app
+        localStorage.removeItem('last_sync_time');
+        localStorage.removeItem('last_local_change_time');
+        localStorage.removeItem('device_id');
+        // Keep GitHub token and gist ID in case user wants to sync again
+        
+        closeDatabaseWipeDialog();
+        
+        // Reinitialize the database
+        await db.init();
+        await initializeDefaultMuscleGroups();
+        
+        // Reset app state
+        currentMuscleGroupId = null;
+        currentTaskIndex = 0;
+        taskStates = {};
+        
+        alert('Database wiped successfully! The app will now start fresh.');
+        
+        // Navigate to home screen
+        navigate('home');
+        await showHomeScreen();
+        
     } catch (error) {
-        if (error.error === 'popup_closed_by_user') {
-            alert('Sign in was cancelled');
-        } else {
-            alert('Failed to sign in: ' + error.message);
-        }
+        console.error('Error wiping database:', error);
+        alert('Failed to wipe database: ' + error.message);
     }
 }
 

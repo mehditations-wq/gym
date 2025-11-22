@@ -5,8 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gym Tracker</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- Google API for Drive -->
-    <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
     <!-- Home Screen -->
@@ -19,7 +17,6 @@
             </div>
         </header>
         <div style="padding: 8px 16px;">
-            <button class="outlined-button" onclick="showAddMuscleGroupDialog()" style="width: 100%; margin-bottom: 8px;">+ Add Workout</button>
             <button class="outlined-button" onclick="showManageMuscleGroups()" style="width: 100%;">Manage Workouts</button>
         </div>
         <div id="muscle-groups-grid" class="muscle-groups-grid">
@@ -72,11 +69,8 @@
                 <p id="last-sync-time" class="help-text" style="font-weight: 500; margin-top: 16px;"></p>
                 <p id="sync-status-info" class="help-text" style="margin-top: 8px; font-size: 12px;"></p>
                 <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-color);">
-                    <h3>Video Sync (Google Drive)</h3>
-                    <p class="help-text">Configure Google Drive to sync videos across devices. No payment method required!</p>
-                    <p id="google-drive-status" class="help-text" style="margin: 8px 0;"></p>
-                    <button class="outlined-button" onclick="showGoogleDriveConfigDialog()" id="google-drive-config-button">Configure Google Drive</button>
-                    <button class="outlined-button" onclick="signInGoogleDrive()" id="google-drive-signin-button" style="display: none; margin-top: 8px;">Sign In to Google</button>
+                    <h3>Video Storage</h3>
+                    <p class="help-text">Videos are stored locally on your device. They will not sync across devices, but all other data (exercises, workout history) will sync via GitHub.</p>
                 </div>
             </div>
 
@@ -91,6 +85,12 @@
                 <p style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
                     <strong>Need help?</strong> See the <a href="SYNC_GUIDE.md" target="_blank" style="color: var(--primary-color);">complete sync guide</a> for detailed instructions.
                 </p>
+            </div>
+            
+            <div style="margin-top: 32px; padding-top: 24px; border-top: 2px solid var(--border-color);">
+                <h3>Database Settings</h3>
+                <p class="help-text">Manage your local database. Use with caution!</p>
+                <button class="outlined-button" onclick="showDatabaseWipeDialog()" style="width: 100%; margin-top: 16px; background-color: var(--error-color); color: white; border-color: var(--error-color);">Wipe Database (Fresh Start)</button>
             </div>
         </div>
     </div>
@@ -168,6 +168,7 @@
         <header class="app-header">
             <button class="back-button" onclick="navigate('detail')">← Back</button>
             <h1 id="workout-title">Workout</h1>
+            <button class="text-button" onclick="finishWorkout()" id="finish-workout-button">Finish</button>
         </header>
         <div class="workout-content">
             <div id="workout-pager" class="workout-pager">
@@ -264,8 +265,12 @@
         <header class="app-header">
             <button class="back-button" onclick="navigate('home')">← Back</button>
             <h1>Manage Workouts</h1>
+            <button class="text-button" id="muscle-group-order-toggle" onclick="toggleMuscleGroupOrderMode()">ORDER</button>
         </header>
         <div class="edit-content">
+            <div style="padding: 8px 16px;">
+                <button class="outlined-button" onclick="showAddMuscleGroupDialog()" style="width: 100%; margin-bottom: 16px;">+ Add Workout</button>
+            </div>
             <div id="muscle-groups-list" class="tasks-list">
                 <!-- Muscle groups will be dynamically inserted here -->
             </div>
@@ -274,24 +279,16 @@
 
     <!-- Edit History Entry Dialog -->
     <div id="edit-history-entry-dialog" class="dialog-overlay" style="display: none;">
-        <div class="dialog" style="max-width: 500px;">
+        <div class="dialog" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
             <h3>Edit Workout Entry</h3>
-            <div class="edit-field">
-                <label>Sets</label>
-                <input type="number" id="edit-entry-sets" min="1" />
-            </div>
-            <div class="edit-field">
-                <label>Reps</label>
-                <input type="number" id="edit-entry-reps" min="1" />
-            </div>
-            <div class="edit-field">
-                <label>Weight (kg)</label>
-                <input type="number" id="edit-entry-weight" step="0.1" min="0" />
-            </div>
             <div class="edit-field">
                 <label>Date</label>
                 <input type="datetime-local" id="edit-entry-date" />
             </div>
+            <div id="edit-entry-sets-container" style="margin: 16px 0;">
+                <!-- Sets will be dynamically inserted here -->
+            </div>
+            <button class="outlined-button" onclick="addSetToHistoryEntry()" style="width: 100%; margin-bottom: 16px;">+ Add Set</button>
             <div class="dialog-buttons">
                 <button class="outlined-button" onclick="closeEditHistoryEntryDialog()">Cancel</button>
                 <button class="primary-button delete-button" onclick="deleteHistoryEntry()" style="background-color: var(--error-color);">Delete</button>
@@ -300,34 +297,6 @@
         </div>
     </div>
 
-    <!-- Google Drive Config Dialog -->
-    <div id="google-drive-config-dialog" class="dialog-overlay" style="display: none;">
-        <div class="dialog" style="max-width: 600px;">
-            <h3>Google Drive Setup</h3>
-            <p class="help-text">Configure Google Drive to sync videos across devices. Get your Client ID from Google Cloud Console.</p>
-            <div class="sync-instructions" style="margin: 16px 0;">
-                <p><strong>How to get Client ID:</strong></p>
-                <ol style="text-align: left; margin: 8px 0; padding-left: 20px;">
-                    <li>Go to <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></li>
-                    <li>Create a project (or select existing)</li>
-                    <li>Enable "Google Drive API"</li>
-                    <li>Go to "Credentials" → "Create Credentials" → "OAuth client ID"</li>
-                    <li>Application type: "Web application"</li>
-                    <li>Add authorized origins: <code>http://localhost</code> (and your domain)</li>
-                    <li>Copy the Client ID and paste below</li>
-                </ol>
-            </div>
-            <div class="edit-field">
-                <label>OAuth Client ID</label>
-                <input type="text" id="google-drive-client-id" placeholder="xxxxx.apps.googleusercontent.com" />
-                <p class="help-text">Looks like: xxxxx.apps.googleusercontent.com</p>
-            </div>
-            <div class="dialog-buttons">
-                <button class="outlined-button" onclick="closeGoogleDriveConfigDialog()">Cancel</button>
-                <button class="primary-button" onclick="saveGoogleDriveConfig()">Save</button>
-            </div>
-        </div>
-    </div>
 
     <!-- Delete Confirmation Dialog -->
     <div id="delete-dialog" class="dialog-overlay" style="display: none;">
@@ -341,8 +310,36 @@
         </div>
     </div>
 
+    <!-- Database Wipe Warning Dialog -->
+    <div id="database-wipe-dialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog" style="max-width: 500px;">
+            <h3 style="color: var(--error-color);">⚠️ Warning: Wipe Database</h3>
+            <p style="margin: 16px 0; font-weight: 500;">This will permanently delete ALL your local data:</p>
+            <ul style="text-align: left; margin: 16px 0; padding-left: 24px;">
+                <li>All workouts (muscle groups)</li>
+                <li>All exercises</li>
+                <li>All workout history</li>
+                <li>All videos</li>
+                <li>All sync queue items</li>
+            </ul>
+            <p style="margin: 16px 0; color: var(--error-color); font-weight: 500;">
+                This action CANNOT be undone!
+            </p>
+            <p style="margin: 16px 0; font-size: 14px; color: var(--text-secondary);">
+                Note: If you have synced to GitHub, you can download your data again. Otherwise, all data will be lost.
+            </p>
+            <div style="margin: 24px 0; padding: 16px; background-color: #fff3cd; border-radius: 8px; border: 2px solid #ffc107;">
+                <p style="margin: 0; font-weight: 500;">Type <strong>"DELETE"</strong> to confirm:</p>
+                <input type="text" id="wipe-confirm-input" placeholder="Type DELETE here" style="width: 100%; padding: 12px; margin-top: 8px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 16px;" />
+            </div>
+            <div class="dialog-buttons">
+                <button class="outlined-button" onclick="closeDatabaseWipeDialog()">Cancel</button>
+                <button class="primary-button delete-button" onclick="confirmDatabaseWipe()" id="confirm-wipe-button" disabled>Wipe Database</button>
+            </div>
+        </div>
+    </div>
+
     <script src="database.js"></script>
-    <script src="google-drive-storage.js"></script>
     <script src="github-sync.js"></script>
     <script src="app.js"></script>
 </body>
