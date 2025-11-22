@@ -494,6 +494,17 @@ class GymDatabase {
         });
     }
 
+    async getAllVideos() {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['videos'], 'readonly');
+            const store = transaction.objectStore('videos');
+            const request = store.getAll();
+
+            request.onsuccess = () => resolve(request.result || []);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
     // Sync Queue operations
     async addToSyncQueue(operation, entityType, entityData) {
         return new Promise((resolve, reject) => {

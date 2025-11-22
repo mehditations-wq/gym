@@ -1757,6 +1757,89 @@ async function confirmDatabaseWipe() {
     }
 }
 
+// Export and download database
+async function exportDatabase(event) {
+    const button = event ? event.target : null;
+    const originalText = button ? button.textContent : '';
+    
+    try {
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Exporting...';
+        }
+        
+        console.log('Starting database export...');
+        
+        // Get all data from database
+        const muscleGroups = await db.getAllMuscleGroups();
+        const allTasks = [];
+        const allLogEntries = [];
+        const allVideos = [];
+        
+        // Get all tasks
+        for (const group of muscleGroups) {
+            const tasks = await db.getTasksByMuscleGroup(group.id);
+            allTasks.push(...tasks);
+        }
+        
+        // Get all log entries
+        for (const task of allTasks) {
+            const entries = await db.getLogEntriesByTask(task.id);
+            allLogEntries.push(...entries);
+        }
+        
+        // Get all videos
+        const videos = await db.getAllVideos();
+        allVideos.push(...videos);
+        
+        // Get sync queue (optional, for reference)
+        const syncQueue = await db.getSyncQueue();
+        
+        // Create export object
+        const exportData = {
+            version: 2,
+            exportDate: new Date().toISOString(),
+            exportTimestamp: Date.now(),
+            muscleGroups,
+            tasks: allTasks,
+            logEntries: allLogEntries,
+            videos: allVideos,
+            syncQueue: syncQueue,
+            metadata: {
+                deviceId: db.getDeviceId(),
+                lastSyncTime: localStorage.getItem('last_sync_time'),
+                lastLocalChangeTime: localStorage.getItem('last_local_change_time')
+            }
+        };
+        
+        // Convert to JSON string
+        const jsonString = JSON.stringify(exportData, null, 2);
+        
+        // Create blob and download
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `gym-tracker-backup-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        
+        console.log('Database exported successfully');
+        alert('Database exported successfully! Your backup file has been downloaded.');
+        
+    } catch (error) {
+        console.error('Error exporting database:', error);
+        alert('Failed to export database: ' + error.message);
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.textContent = originalText || 'Download Database';
+        }
+    }
+}
+
 // Listen for online/offline events
 window.addEventListener('online', () => {
     console.log('Network online, processing sync queue...');
