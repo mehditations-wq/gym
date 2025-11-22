@@ -139,8 +139,55 @@
             <div id="workout-pager" class="workout-pager">
                 <!-- Task pages will be dynamically inserted here -->
             </div>
-            <div id="workout-progress" class="workout-progress">
-                <!-- Progress indicators will be dynamically inserted here -->
+            <div class="workout-bottom-fixed">
+                <div id="workout-actions-container" class="workout-actions-container">
+                    <!-- Action buttons will be dynamically inserted here -->
+                </div>
+                <div id="workout-progress" class="workout-progress">
+                    <!-- Progress indicators will be dynamically inserted here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Task Screen -->
+    <div id="edit-task-screen" class="screen">
+        <header class="app-header">
+            <button class="back-button" onclick="navigate('edit')">← Back</button>
+            <h1>Edit Exercise</h1>
+        </header>
+        <div class="edit-task-content">
+            <div class="step">
+                <label>Task Name</label>
+                <input type="text" id="edit-task-name" placeholder="Enter task name" />
+            </div>
+            <div class="step">
+                <label>Tips</label>
+                <textarea id="edit-task-tips" placeholder="Enter tips (optional)" rows="8"></textarea>
+            </div>
+            <div class="step">
+                <label>Instructions</label>
+                <textarea id="edit-task-instructions" placeholder="Enter instructions (optional)" rows="8"></textarea>
+            </div>
+            <div class="step">
+                <label>Video (Optional)</label>
+                <input type="file" id="edit-task-video" accept="video/*" />
+                <p class="help-text">Select a new video file to replace the current one (optional)</p>
+                <button class="outlined-button" id="remove-video-button" onclick="removeVideoFromTask()" style="display: none; margin-top: 8px;">Remove Video</button>
+            </div>
+            <div class="step-navigation">
+                <button class="primary-button" onclick="saveEditedTask()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Workout Complete Dialog -->
+    <div id="workout-complete-dialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog">
+            <h3 id="workout-complete-title">Workout Complete!</h3>
+            <p id="workout-complete-message"></p>
+            <div class="dialog-buttons" id="workout-complete-buttons">
+                <!-- Buttons will be dynamically inserted here -->
             </div>
         </div>
     </div>
