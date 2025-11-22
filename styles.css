@@ -1,0 +1,720 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --primary-color: #6200ee;
+    --primary-dark: #3700b3;
+    --secondary-color: #03dac6;
+    --surface-color: #ffffff;
+    --background-color: #f5f5f5;
+    --text-primary: #000000;
+    --text-secondary: rgba(0, 0, 0, 0.6);
+    --error-color: #b00020;
+    --border-color: rgba(0, 0, 0, 0.12);
+    --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    --shadow-elevated: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    background-color: var(--background-color);
+    color: var(--text-primary);
+    line-height: 1.6;
+}
+
+.screen {
+    display: none;
+    min-height: 100vh;
+    padding-bottom: 80px;
+}
+
+.screen.active {
+    display: block;
+}
+
+/* Header */
+.app-header {
+    background-color: var(--surface-color);
+    padding: 16px;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.app-header h1 {
+    font-size: 20px;
+    font-weight: 500;
+    flex: 1;
+}
+
+.back-button {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--primary-color);
+    padding: 4px 8px;
+}
+
+.text-button {
+    background: none;
+    border: none;
+    color: var(--primary-color);
+    cursor: pointer;
+    padding: 8px 16px;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+/* Home Screen */
+.muscle-groups-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    padding: 16px;
+}
+
+.muscle-group-card {
+    background: var(--surface-color);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+    transition: transform 0.2s, box-shadow 0.2s;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+
+.muscle-group-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-elevated);
+}
+
+.muscle-group-card h2 {
+    font-size: 18px;
+    margin-bottom: 8px;
+}
+
+.muscle-group-card p {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+/* Detail Screen */
+.detail-content {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.primary-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    padding: 20px;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s;
+    min-height: 80px;
+}
+
+.primary-button:hover:not(:disabled) {
+    background-color: var(--primary-dark);
+}
+
+.primary-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.outlined-button {
+    background-color: transparent;
+    color: var(--primary-color);
+    border: 2px solid var(--primary-color);
+    padding: 16px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.outlined-button:hover {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.empty-message {
+    text-align: center;
+    color: var(--text-secondary);
+    padding: 16px;
+}
+
+/* Edit Screen */
+.edit-content {
+    padding: 16px;
+    position: relative;
+    min-height: calc(100vh - 60px);
+}
+
+.tasks-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.task-item {
+    background: var(--surface-color);
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.task-item.order-mode {
+    padding: 12px;
+}
+
+.task-order-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.task-order-controls button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    color: var(--text-secondary);
+}
+
+.task-order-controls button:disabled {
+    opacity: 0.3;
+}
+
+.task-name {
+    flex: 1;
+    font-size: 16px;
+}
+
+.delete-button-icon {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--error-color);
+    padding: 8px;
+    font-size: 20px;
+}
+
+.fab {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 56px;
+    height: 56px;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    box-shadow: var(--shadow-elevated);
+    transition: transform 0.2s;
+}
+
+.fab:hover {
+    transform: scale(1.1);
+}
+
+/* Add Task Screen */
+.add-task-content {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: calc(100vh - 60px);
+}
+
+.step {
+    display: none;
+}
+
+.step.active {
+    display: block;
+}
+
+.step label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.step input[type="text"],
+.step textarea {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 16px;
+    font-family: inherit;
+}
+
+.step input[type="text"]:focus,
+.step textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.step textarea {
+    resize: vertical;
+    min-height: 150px;
+}
+
+.step input[type="file"] {
+    width: 100%;
+    padding: 12px;
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.help-text {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 8px;
+}
+
+.step-navigation {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 16px;
+}
+
+.step-navigation button {
+    flex: 1;
+}
+
+/* Workout Screen */
+.workout-content {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 60px);
+}
+
+.workout-pager {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.workout-page {
+    display: none;
+    padding: 16px;
+    overflow-y: auto;
+    height: 100%;
+    padding-bottom: 100px;
+}
+
+.workout-content-inner {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.workout-page.active {
+    display: block;
+}
+
+.video-button {
+    width: 100%;
+    padding: 16px;
+    background-color: var(--secondary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.collapsible-section {
+    background: var(--surface-color);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+}
+
+.collapsible-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.collapsible-content {
+    margin-top: 12px;
+    display: none;
+}
+
+.collapsible-section.expanded .collapsible-content {
+    display: block;
+}
+
+.counter-input {
+    margin-bottom: 24px;
+}
+
+.counter-input label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.counter-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: var(--surface-color);
+    padding: 16px;
+    border-radius: 8px;
+    box-shadow: var(--shadow);
+}
+
+.counter-button {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    border: 2px solid var(--primary-color);
+    background: white;
+    color: var(--primary-color);
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.counter-value {
+    flex: 1;
+    text-align: center;
+    font-size: 32px;
+    font-weight: 500;
+}
+
+.weight-input {
+    margin-bottom: 24px;
+}
+
+.weight-input label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.weight-input input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 16px;
+}
+
+.history-table {
+    background: var(--surface-color);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+}
+
+.history-table-header {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 500;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.history-table-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.history-table-row:last-child {
+    border-bottom: none;
+}
+
+.workout-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: auto;
+    padding-top: 16px;
+}
+
+.workout-actions button {
+    flex: 1;
+}
+
+.workout-progress {
+    background: var(--surface-color);
+    padding: 16px;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+    display: flex;
+    gap: 8px;
+}
+
+.progress-indicator {
+    flex: 1;
+    height: 40px;
+    border-radius: 20px;
+    border: 2px solid var(--border-color);
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+}
+
+.progress-indicator.current {
+    border-color: var(--primary-color);
+    border-width: 3px;
+}
+
+.progress-indicator.done {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.progress-indicator.skipped {
+    background-color: var(--secondary-color);
+    border-color: var(--secondary-color);
+}
+
+/* History Screen */
+.history-content {
+    padding: 16px;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.history-task-item {
+    background: var(--surface-color);
+    border-radius: 8px;
+    padding: 16px;
+    box-shadow: var(--shadow);
+    cursor: pointer;
+}
+
+.history-task-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.history-task-name {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.history-entry-count {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.history-entries {
+    margin-top: 12px;
+    display: none;
+}
+
+.history-task-item.expanded .history-entries {
+    display: block;
+}
+
+.history-entry {
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+}
+
+.history-entry:last-child {
+    border-bottom: none;
+}
+
+/* Dialog */
+.dialog-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.dialog {
+    background: var(--surface-color);
+    border-radius: 8px;
+    padding: 24px;
+    max-width: 400px;
+    width: 90%;
+    box-shadow: var(--shadow-elevated);
+}
+
+.dialog h3 {
+    margin-bottom: 12px;
+}
+
+.dialog p {
+    margin-bottom: 24px;
+    color: var(--text-secondary);
+}
+
+.dialog-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.delete-button {
+    background-color: var(--error-color);
+}
+
+.delete-button:hover {
+    background-color: #8b0018;
+}
+
+/* Sync Screen */
+.sync-content {
+    padding: 16px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.sync-status {
+    background: var(--surface-color);
+    padding: 16px;
+    border-radius: 8px;
+    margin-bottom: 24px;
+    box-shadow: var(--shadow);
+    text-align: center;
+}
+
+.sync-status p {
+    font-weight: 500;
+    margin: 0;
+}
+
+.sync-instructions {
+    background: var(--background-color);
+    padding: 16px;
+    border-radius: 8px;
+    margin: 16px 0;
+    font-size: 14px;
+}
+
+.sync-instructions ol {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.sync-instructions li {
+    margin: 8px 0;
+}
+
+.sync-instructions a {
+    color: var(--primary-color);
+    text-decoration: none;
+}
+
+.sync-instructions a:hover {
+    text-decoration: underline;
+}
+
+#github-token-input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 16px;
+    font-family: monospace;
+    margin: 16px 0;
+}
+
+#sync-controls-section {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 24px 0;
+}
+
+#sync-controls-section button {
+    width: 100%;
+}
+
+.sync-info {
+    background: var(--background-color);
+    padding: 16px;
+    border-radius: 8px;
+    margin-top: 24px;
+}
+
+.sync-info h3 {
+    margin-bottom: 12px;
+    font-size: 16px;
+}
+
+.sync-info ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.sync-info li {
+    margin: 8px 0;
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+/* Responsive */
+@media (max-width: 600px) {
+    .muscle-groups-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
