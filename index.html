@@ -49,10 +49,19 @@
 
             <div id="sync-controls-section" style="display: none;">
                 <h3>Sync Controls</h3>
+                <div class="sync-workflow">
+                    <p><strong>How to sync across devices:</strong></p>
+                    <ol style="text-align: left; margin: 16px 0;">
+                        <li><strong>First device:</strong> Click "Upload to GitHub" to save your data</li>
+                        <li><strong>Other devices:</strong> Use the same token, then click "Download from GitHub"</li>
+                        <li><strong>After changes:</strong> Data auto-syncs when you add/edit exercises or complete workouts</li>
+                    </ol>
+                </div>
                 <button class="primary-button" onclick="syncToGitHub()">Upload to GitHub</button>
                 <button class="outlined-button" onclick="syncFromGitHub()">Download from GitHub</button>
                 <button class="outlined-button" onclick="disconnectGitHub()">Disconnect</button>
                 <p id="last-sync-time" class="help-text"></p>
+                <p id="sync-status-info" class="help-text" style="margin-top: 8px; font-size: 12px;"></p>
             </div>
 
             <div id="sync-info" class="sync-info">
@@ -63,6 +72,9 @@
                     <li>Data syncs automatically when you make changes</li>
                     <li>Videos are stored locally (too large for GitHub)</li>
                 </ul>
+                <p style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+                    <strong>Need help?</strong> See the <a href="SYNC_GUIDE.md" target="_blank" style="color: var(--primary-color);">complete sync guide</a> for detailed instructions.
+                </p>
             </div>
         </div>
     </div>
@@ -157,26 +169,26 @@
             <h1>Edit Exercise</h1>
         </header>
         <div class="edit-task-content">
-            <div class="step">
+            <div class="edit-field">
                 <label>Task Name</label>
                 <input type="text" id="edit-task-name" placeholder="Enter task name" />
             </div>
-            <div class="step">
+            <div class="edit-field">
                 <label>Tips</label>
                 <textarea id="edit-task-tips" placeholder="Enter tips (optional)" rows="8"></textarea>
             </div>
-            <div class="step">
+            <div class="edit-field">
                 <label>Instructions</label>
                 <textarea id="edit-task-instructions" placeholder="Enter instructions (optional)" rows="8"></textarea>
             </div>
-            <div class="step">
+            <div class="edit-field">
                 <label>Video (Optional)</label>
                 <input type="file" id="edit-task-video" accept="video/*" />
                 <p class="help-text">Select a new video file to replace the current one (optional)</p>
                 <button class="outlined-button" id="remove-video-button" onclick="removeVideoFromTask()" style="display: none; margin-top: 8px;">Remove Video</button>
             </div>
-            <div class="step-navigation">
-                <button class="primary-button" onclick="saveEditedTask()">Save Changes</button>
+            <div class="edit-field">
+                <button class="primary-button" onclick="saveEditedTask()" style="width: 100%;">Save Changes</button>
             </div>
         </div>
     </div>

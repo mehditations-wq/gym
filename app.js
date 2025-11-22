@@ -838,7 +838,7 @@ function updateSyncStatus() {
 }
 
 // GitHub Sync Screen
-function showSyncScreen() {
+async function showSyncScreen() {
     const screen = document.getElementById('sync-screen');
     screen.classList.add('active');
     
@@ -846,6 +846,7 @@ function showSyncScreen() {
     const authSection = document.getElementById('sync-auth-section');
     const controlsSection = document.getElementById('sync-controls-section');
     const statusText = document.getElementById('sync-status-text');
+    const statusInfo = document.getElementById('sync-status-info');
     
     if (isAuthenticated) {
         authSection.style.display = 'none';
@@ -860,11 +861,45 @@ function showSyncScreen() {
         } else {
             lastSyncElement.textContent = 'Not synced yet';
         }
+        
+        // Show sync status info
+        const gistId = githubSync.getGistId();
+        if (gistId) {
+            statusInfo.textContent = `Gist ID: ${gistId.substring(0, 8)}...`;
+            statusInfo.style.color = 'var(--text-secondary)';
+        } else {
+            statusInfo.textContent = 'No Gist created yet. Upload data to create one.';
+            statusInfo.style.color = 'var(--text-secondary)';
+        }
+        
+        // Show local data count
+        try {
+            const groups = await db.getAllMuscleGroups();
+            let taskCount = 0;
+            let logCount = 0;
+            for (const group of groups) {
+                const tasks = await db.getTasksByMuscleGroup(group.id);
+                taskCount += tasks.length;
+                for (const task of tasks) {
+                    const entries = await db.getLogEntriesByTask(task.id);
+                    logCount += entries.length;
+                }
+            }
+            const dataInfo = `Local data: ${groups.length} groups, ${taskCount} exercises, ${logCount} workout logs`;
+            if (!statusInfo.textContent.includes('Local data')) {
+                statusInfo.textContent += ` | ${dataInfo}`;
+            }
+        } catch (e) {
+            console.log('Could not get data count:', e);
+        }
     } else {
         authSection.style.display = 'block';
         controlsSection.style.display = 'none';
         statusText.textContent = 'Not connected to GitHub';
         statusText.style.color = 'red';
+        if (statusInfo) {
+            statusInfo.textContent = '';
+        }
     }
 }
 
@@ -896,14 +931,25 @@ async function syncToGitHub() {
         button.disabled = true;
         button.textContent = 'Syncing...';
         
+        console.log('Starting sync to GitHub...');
         await githubSync.syncToGitHub();
         localStorage.setItem('last_sync_time', Date.now().toString());
         
-        alert('Successfully synced to GitHub!');
+        alert('Successfully synced to GitHub! Your data is now saved in the cloud.');
+        console.log('Upload completed successfully');
         showSyncScreen();
         updateSyncStatus();
     } catch (error) {
-        alert('Sync failed: ' + error.message);
+        console.error('Upload error details:', error);
+        let errorMessage = 'Sync failed: ' + error.message;
+        
+        if (error.message.includes('401') || error.message.includes('Bad credentials')) {
+            errorMessage += '\n\nYour GitHub token may be invalid or expired. Please disconnect and reconnect with a new token.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+            errorMessage += '\n\nPlease check your internet connection and try again.';
+        }
+        
+        alert(errorMessage);
     } finally {
         const button = event.target;
         button.disabled = false;
@@ -917,7 +963,9 @@ async function syncFromGitHub() {
         button.disabled = true;
         button.textContent = 'Syncing...';
         
+        console.log('Starting sync from GitHub...');
         const synced = await githubSync.syncFromGitHub();
+        
         if (synced) {
             localStorage.setItem('last_sync_time', Date.now().toString());
             
@@ -933,12 +981,24 @@ async function syncFromGitHub() {
             }
             updateSyncStatus();
             
-            alert('Successfully synced from GitHub!');
+            alert('Successfully synced from GitHub! Your data has been updated.');
+            console.log('Sync completed successfully');
         } else {
-            alert('No data found on GitHub');
+            alert('No data found on GitHub. Make sure you\'ve uploaded data from another device first.');
         }
     } catch (error) {
-        alert('Sync failed: ' + error.message);
+        console.error('Sync error details:', error);
+        let errorMessage = 'Sync failed: ' + error.message;
+        
+        if (error.message.includes('401') || error.message.includes('Bad credentials')) {
+            errorMessage += '\n\nYour GitHub token may be invalid or expired. Please check your token and try again.';
+        } else if (error.message.includes('404')) {
+            errorMessage += '\n\nNo data found on GitHub. Make sure you\'ve uploaded data from another device first.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+            errorMessage += '\n\nPlease check your internet connection and try again.';
+        }
+        
+        alert(errorMessage);
     } finally {
         const button = event.target;
         button.disabled = false;

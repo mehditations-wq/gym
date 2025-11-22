@@ -260,6 +260,46 @@ body {
     min-height: calc(100vh - 60px);
 }
 
+.edit-field {
+    display: block;
+}
+
+.edit-field label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    font-size: 14px;
+}
+
+.edit-field input[type="text"],
+.edit-field textarea {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 16px;
+    font-family: inherit;
+}
+
+.edit-field input[type="text"]:focus,
+.edit-field textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.edit-field textarea {
+    resize: vertical;
+    min-height: 150px;
+}
+
+.edit-field input[type="file"] {
+    width: 100%;
+    padding: 12px;
+    border: 2px dashed var(--border-color);
+    border-radius: 8px;
+    cursor: pointer;
+}
+
 .step {
     display: none;
 }
@@ -739,6 +779,23 @@ body {
     margin: 8px 0;
     font-size: 14px;
     color: var(--text-secondary);
+}
+
+.sync-workflow {
+    background: var(--background-color);
+    padding: 16px;
+    border-radius: 8px;
+    margin: 16px 0;
+    text-align: center;
+}
+
+.sync-workflow ol {
+    padding-left: 20px;
+}
+
+.sync-workflow li {
+    margin: 8px 0;
+    text-align: left;
 }
 
 /* Responsive */

@@ -207,52 +207,136 @@ class GitHubSync {
     // Import data into IndexedDB
     async importData(data) {
         try {
-            // Clear existing data (optional - you might want to merge instead)
-            // For now, we'll import and let IndexedDB handle duplicates
+            let importedCount = {
+                muscleGroups: 0,
+                tasks: 0,
+                logEntries: 0
+            };
 
-            // Import muscle groups
-            if (data.muscleGroups) {
+            // Import muscle groups - merge by name if ID doesn't match
+            if (data.muscleGroups && data.muscleGroups.length > 0) {
+                const existingGroups = await db.getAllMuscleGroups();
+                const existingGroupNames = new Set(existingGroups.map(g => g.name.toLowerCase()));
+                
                 for (const group of data.muscleGroups) {
-                    const existing = await db.getMuscleGroupById(group.id);
-                    if (!existing) {
-                        await db.insertMuscleGroup(group);
+                    const existingById = await db.getMuscleGroupById(group.id);
+                    const existingByName = existingGroups.find(g => g.name.toLowerCase() === group.name.toLowerCase());
+                    
+                    if (!existingById && !existingByName) {
+                        // New group, insert it
+                        await db.insertMuscleGroup({ name: group.name });
+                        importedCount.muscleGroups++;
                     }
+                    // If group exists (by ID or name), we keep the local one
+                    // Muscle groups are static, so we don't need to update them
                 }
             }
 
-            // Import tasks
-            if (data.tasks) {
+            // Import tasks - match by muscleGroupId and name, update or insert
+            if (data.tasks && data.tasks.length > 0) {
+                const allLocalTasks = [];
+                const allLocalGroups = await db.getAllMuscleGroups();
+                for (const group of allLocalGroups) {
+                    const tasks = await db.getTasksByMuscleGroup(group.id);
+                    allLocalTasks.push(...tasks);
+                }
+
                 for (const task of data.tasks) {
-                    const existing = await db.getTaskById(task.id);
-                    if (!existing) {
-                        await db.insertTask(task);
-                    } else {
+                    // Find matching muscle group by name
+                    const localGroups = await db.getAllMuscleGroups();
+                    const matchingGroup = localGroups.find(g => {
+                        // Try to find by ID first, then by name
+                        const dataGroup = data.muscleGroups?.find(dg => dg.id === task.muscleGroupId);
+                        if (dataGroup) {
+                            return g.id === task.muscleGroupId || g.name.toLowerCase() === dataGroup.name.toLowerCase();
+                        }
+                        return false;
+                    });
+
+                    if (!matchingGroup) {
+                        console.warn(`Could not find matching muscle group for task: ${task.name}`);
+                        continue;
+                    }
+
+                    // Check if task exists by ID or by name in the same muscle group
+                    const existingById = await db.getTaskById(task.id);
+                    const existingByName = allLocalTasks.find(t => 
+                        t.muscleGroupId === matchingGroup.id && 
+                        t.name.toLowerCase() === task.name.toLowerCase()
+                    );
+
+                    if (existingById) {
+                        // Update existing task
+                        task.muscleGroupId = matchingGroup.id;
                         await db.updateTask(task);
+                        importedCount.tasks++;
+                    } else if (existingByName) {
+                        // Update by name match
+                        existingByName.name = task.name;
+                        existingByName.instructions = task.instructions;
+                        existingByName.tips = task.tips;
+                        existingByName.videoFileName = task.videoFileName;
+                        existingByName.orderIndex = task.orderIndex;
+                        await db.updateTask(existingByName);
+                        importedCount.tasks++;
+                    } else {
+                        // New task, insert with correct muscleGroupId
+                        const newTask = {
+                            ...task,
+                            muscleGroupId: matchingGroup.id,
+                            id: undefined // Let database generate new ID
+                        };
+                        await db.insertTask(newTask);
+                        importedCount.tasks++;
                     }
                 }
             }
 
-            // Import log entries
-            if (data.logEntries) {
+            // Import log entries - match by task name and date
+            if (data.logEntries && data.logEntries.length > 0) {
+                const allLocalTasks = [];
+                const allLocalGroups = await db.getAllMuscleGroups();
+                for (const group of allLocalGroups) {
+                    const tasks = await db.getTasksByMuscleGroup(group.id);
+                    allLocalTasks.push(...tasks);
+                }
+
                 for (const entry of data.logEntries) {
-                    // Check if entry already exists (by date and taskId)
-                    const existing = await db.getLogEntriesByTask(entry.taskId);
-                    const duplicate = existing.find(e => 
-                        e.taskId === entry.taskId && 
-                        e.date === entry.date &&
+                    // Find the task this entry belongs to
+                    const dataTask = data.tasks?.find(t => t.id === entry.taskId);
+                    if (!dataTask) continue;
+
+                    // Find matching local task by name
+                    const matchingTask = allLocalTasks.find(t => 
+                        t.name.toLowerCase() === dataTask.name.toLowerCase()
+                    );
+
+                    if (!matchingTask) {
+                        console.warn(`Could not find matching task for log entry: ${dataTask.name}`);
+                        continue;
+                    }
+
+                    // Check if entry already exists
+                    const existingEntries = await db.getLogEntriesByTask(matchingTask.id);
+                    const duplicate = existingEntries.find(e => 
+                        Math.abs(e.date - entry.date) < 60000 && // Within 1 minute
                         e.sets === entry.sets &&
-                        e.reps === entry.reps
+                        e.reps === entry.reps &&
+                        Math.abs(e.weightKg - entry.weightKg) < 0.01
                     );
                     
                     if (!duplicate) {
-                        await db.insertLogEntry(entry);
+                        const newEntry = {
+                            ...entry,
+                            taskId: matchingTask.id
+                        };
+                        await db.insertLogEntry(newEntry);
+                        importedCount.logEntries++;
                     }
                 }
             }
 
-            // Videos are kept in IndexedDB (too large for Gist)
-            // Video metadata is synced but actual video data stays local
-
+            console.log('Import summary:', importedCount);
             return true;
         } catch (error) {
             console.error('Error importing data:', error);
@@ -306,4 +390,5 @@ class GitHubSync {
 
 // Initialize GitHub sync instance
 const githubSync = new GitHubSync();
+
 
