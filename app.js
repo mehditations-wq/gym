@@ -12,14 +12,8 @@ async function init() {
     await db.init();
     githubSync.init();
     
-    // Try to sync from GitHub on startup if authenticated
-    if (githubSync.isAuthenticated()) {
-        try {
-            await syncFromGitHub();
-        } catch (error) {
-            console.log('Could not sync from GitHub on startup:', error);
-        }
-    }
+    // DO NOT auto-sync on startup - causes infinite loop
+    // User must manually sync if they want to download from GitHub
     
     await initializeDefaultMuscleGroups();
     updateSyncStatus();
@@ -926,9 +920,20 @@ async function syncFromGitHub() {
         const synced = await githubSync.syncFromGitHub();
         if (synced) {
             localStorage.setItem('last_sync_time', Date.now().toString());
-            alert('Successfully synced from GitHub! Refreshing...');
-            // Reload the app to show synced data
-            location.reload();
+            
+            // Refresh the UI to show synced data (NO PAGE RELOAD)
+            await initializeDefaultMuscleGroups();
+            const currentScreen = document.querySelector('.screen.active');
+            if (currentScreen && currentScreen.id === 'home-screen') {
+                await showHomeScreen();
+            } else if (currentMuscleGroupId) {
+                await showDetailScreen();
+            } else {
+                await showHomeScreen();
+            }
+            updateSyncStatus();
+            
+            alert('Successfully synced from GitHub!');
         } else {
             alert('No data found on GitHub');
         }
