@@ -11,13 +11,19 @@ async function init() {
     await db.init();
     githubSync.init();
     
-    // Try to sync from GitHub on startup if authenticated
-    if (githubSync.isAuthenticated()) {
-        try {
-            await syncFromGitHub();
-        } catch (error) {
-            console.log('Could not sync from GitHub on startup:', error);
-        }
+    // Check if we just synced (to prevent infinite loop)
+    const justSynced = sessionStorage.getItem('just_synced');
+    if (justSynced) {
+        sessionStorage.removeItem('just_synced');
+        // Don't auto-sync if we just synced
+    } else if (githubSync.isAuthenticated()) {
+        // Only auto-sync on startup if not just synced
+        // Auto-sync is disabled to prevent loops - user can manually sync
+        // try {
+        //     await syncFromGitHubSilent();
+        // } catch (error) {
+        //     console.log('Could not sync from GitHub on startup:', error);
+        // }
     }
     
     await initializeDefaultMuscleGroups();
@@ -742,9 +748,17 @@ async function syncFromGitHub() {
         const synced = await githubSync.syncFromGitHub();
         if (synced) {
             localStorage.setItem('last_sync_time', Date.now().toString());
-            alert('Successfully synced from GitHub! Refreshing...');
-            // Reload the app to show synced data
-            location.reload();
+            // Set flag to prevent auto-sync on reload
+            sessionStorage.setItem('just_synced', 'true');
+            alert('Successfully synced from GitHub!');
+            // Refresh the UI instead of reloading the page
+            await initializeDefaultMuscleGroups();
+            if (currentMuscleGroupId) {
+                await showDetailScreen();
+            } else {
+                await showHomeScreen();
+            }
+            updateSyncStatus();
         } else {
             alert('No data found on GitHub');
         }
