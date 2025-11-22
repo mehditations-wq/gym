@@ -685,7 +685,7 @@ function createWorkoutPageContent(task) {
             ${state.task.tips ? `
                 <div class="collapsible-section" onclick="toggleCollapsible(this)">
                     <div class="collapsible-header">
-                        <span>Tips</span>
+                        <span>Target Muscle</span>
                         <span>▼</span>
                     </div>
                     <div class="collapsible-content">${state.task.tips}</div>
