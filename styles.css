@@ -251,6 +251,15 @@ body {
     min-height: calc(100vh - 60px);
 }
 
+/* Edit Task Screen */
+.edit-task-content {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-height: calc(100vh - 60px);
+}
+
 .step {
     display: none;
 }
@@ -317,12 +326,14 @@ body {
     display: flex;
     flex-direction: column;
     height: calc(100vh - 60px);
+    position: relative;
 }
 
 .workout-pager {
     flex: 1;
     overflow: hidden;
     position: relative;
+    padding-bottom: 140px; /* Space for fixed bottom section */
 }
 
 .workout-page {
@@ -330,13 +341,33 @@ body {
     padding: 16px;
     overflow-y: auto;
     height: 100%;
-    padding-bottom: 100px;
 }
 
 .workout-content-inner {
     display: flex;
     flex-direction: column;
     gap: 16px;
+    padding-bottom: 16px;
+}
+
+.workout-bottom-fixed {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--surface-color);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+}
+
+.workout-actions-container {
+    padding: 16px;
+    display: flex;
+    gap: 8px;
+}
+
+.workout-actions-container button {
+    flex: 1;
 }
 
 .workout-page.active {
@@ -487,9 +518,8 @@ body {
 }
 
 .workout-progress {
-    background: var(--surface-color);
     padding: 16px;
-    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
+    border-top: 1px solid var(--border-color);
     display: flex;
     gap: 8px;
 }
