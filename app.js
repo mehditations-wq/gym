@@ -5,25 +5,20 @@ let taskStates = {};
 let isOrderMode = false;
 let taskToDelete = null;
 let currentStep = 1;
+let taskToEdit = null;
 
 // Initialize app
 async function init() {
     await db.init();
     githubSync.init();
     
-    // Check if we just synced (to prevent infinite loop)
-    const justSynced = sessionStorage.getItem('just_synced');
-    if (justSynced) {
-        sessionStorage.removeItem('just_synced');
-        // Don't auto-sync if we just synced
-    } else if (githubSync.isAuthenticated()) {
-        // Only auto-sync on startup if not just synced
-        // Auto-sync is disabled to prevent loops - user can manually sync
-        // try {
-        //     await syncFromGitHubSilent();
-        // } catch (error) {
-        //     console.log('Could not sync from GitHub on startup:', error);
-        // }
+    // Try to sync from GitHub on startup if authenticated
+    if (githubSync.isAuthenticated()) {
+        try {
+            await syncFromGitHub();
+        } catch (error) {
+            console.log('Could not sync from GitHub on startup:', error);
+        }
     }
     
     await initializeDefaultMuscleGroups();
@@ -74,6 +69,9 @@ function navigate(screen) {
             break;
         case 'sync':
             showSyncScreen();
+            break;
+        case 'edit-task':
+            showEditTaskScreen();
             break;
     }
 }
@@ -158,7 +156,7 @@ async function loadTasksList() {
                     <button onclick="moveTaskDown(${index})" ${index === tasks.length - 1 ? 'disabled' : ''}>↓</button>
                 </div>
             ` : ''}
-            <div class="task-name">${task.name}</div>
+            <div class="task-name" onclick="editTask(${task.id})" style="cursor: pointer; flex: 1;">${task.name}</div>
             <button class="delete-button-icon" onclick="showDeleteDialog(${task.id})">🗑️</button>
         `;
         list.appendChild(item);
@@ -353,6 +351,7 @@ async function showWorkoutScreen() {
     renderWorkoutPages(tasks);
     renderWorkoutProgress(tasks);
     showWorkoutPage(0);
+    updateWorkoutActions();
 }
 
 function renderWorkoutPages(tasks) {
@@ -442,12 +441,19 @@ function createWorkoutPageContent(task) {
                     `).join('')}
                 </div>
             ` : ''}
-            
-            <div class="workout-actions">
-                <button class="outlined-button" onclick="skipTask(${task.id})">SKIP</button>
-                <button class="primary-button" onclick="completeTask(${task.id})">DONE</button>
-            </div>
         </div>
+    `;
+}
+
+function updateWorkoutActions() {
+    const tasks = Object.values(taskStates).map(s => s.task);
+    const currentTask = tasks[currentTaskIndex];
+    const state = taskStates[currentTask.id];
+    
+    const actionsContainer = document.getElementById('workout-actions-container');
+    actionsContainer.innerHTML = `
+        <button class="outlined-button" onclick="skipTask(${currentTask.id})">SKIP</button>
+        <button class="primary-button" onclick="completeTask(${currentTask.id})">DONE</button>
     `;
 }
 
@@ -474,6 +480,7 @@ function showWorkoutPage(index) {
     document.getElementById('workout-title').textContent = tasks[index].name;
     
     updateWorkoutProgress();
+    updateWorkoutActions();
 }
 
 function updateWorkoutProgress() {
@@ -532,11 +539,20 @@ async function completeTask(taskId) {
     const tasks = Object.values(taskStates).map(s => s.task);
     const currentIndex = tasks.findIndex(t => t.id === taskId);
     
+    updateWorkoutProgress();
+    
     if (currentIndex < tasks.length - 1) {
         showWorkoutPage(currentIndex + 1);
     } else {
-        alert('Workout complete!');
-        navigate('detail');
+        // Check if all tasks are done
+        const allDone = tasks.every(t => taskStates[t.id].isDone);
+        const skippedTasks = tasks.filter(t => taskStates[t.id].isSkipped && !taskStates[t.id].isDone);
+        
+        if (allDone) {
+            showWorkoutCompleteDialog(true, []);
+        } else {
+            showWorkoutCompleteDialog(false, skippedTasks);
+        }
     }
 }
 
@@ -547,10 +563,172 @@ async function skipTask(taskId) {
     const tasks = Object.values(taskStates).map(s => s.task);
     const currentIndex = tasks.findIndex(t => t.id === taskId);
     
+    updateWorkoutProgress();
+    
     if (currentIndex < tasks.length - 1) {
         showWorkoutPage(currentIndex + 1);
     } else {
-        navigate('detail');
+        // Check if all tasks are done
+        const allDone = tasks.every(t => taskStates[t.id].isDone);
+        const skippedTasks = tasks.filter(t => taskStates[t.id].isSkipped && !taskStates[t.id].isDone);
+        
+        if (allDone) {
+            showWorkoutCompleteDialog(true, []);
+        } else {
+            showWorkoutCompleteDialog(false, skippedTasks);
+        }
+    }
+}
+
+function showWorkoutCompleteDialog(allDone, skippedTasks) {
+    const dialog = document.getElementById('workout-complete-dialog');
+    const title = document.getElementById('workout-complete-title');
+    const message = document.getElementById('workout-complete-message');
+    const buttons = document.getElementById('workout-complete-buttons');
+    
+    if (allDone) {
+        title.textContent = 'Workout Complete!';
+        message.textContent = 'Great job! You\'ve completed all exercises.';
+        buttons.innerHTML = `
+            <button class="primary-button" onclick="closeWorkoutCompleteDialog()">OK</button>
+        `;
+    } else {
+        title.textContent = 'Workout Incomplete';
+        message.textContent = `You have ${skippedTasks.length} skipped exercise${skippedTasks.length > 1 ? 's' : ''}. Would you like to complete them or finish anyway?`;
+        buttons.innerHTML = `
+            <button class="outlined-button" onclick="goToSkippedExercises()">Go to Skipped Exercises</button>
+            <button class="primary-button" onclick="finishWorkoutAnyway()">Finish Anyway</button>
+        `;
+    }
+    
+    dialog.style.display = 'flex';
+}
+
+function closeWorkoutCompleteDialog() {
+    document.getElementById('workout-complete-dialog').style.display = 'none';
+    navigate('detail');
+}
+
+function goToSkippedExercises() {
+    const tasks = Object.values(taskStates).map(s => s.task);
+    const skippedTasks = tasks.filter(t => taskStates[t.id].isSkipped && !taskStates[t.id].isDone);
+    
+    if (skippedTasks.length > 0) {
+        const firstSkippedIndex = tasks.findIndex(t => t.id === skippedTasks[0].id);
+        document.getElementById('workout-complete-dialog').style.display = 'none';
+        showWorkoutPage(firstSkippedIndex);
+    }
+}
+
+function finishWorkoutAnyway() {
+    closeWorkoutCompleteDialog();
+}
+
+// Edit Task functionality
+async function editTask(taskId) {
+    if (isOrderMode) {
+        return; // Don't edit in order mode
+    }
+    
+    taskToEdit = taskId;
+    navigate('edit-task');
+}
+
+async function showEditTaskScreen() {
+    if (!taskToEdit) {
+        navigate('edit');
+        return;
+    }
+    
+    const screen = document.getElementById('edit-task-screen');
+    screen.classList.add('active');
+    
+    const task = await db.getTaskById(taskToEdit);
+    if (!task) {
+        navigate('edit');
+        return;
+    }
+    
+    document.getElementById('edit-task-name').value = task.name;
+    document.getElementById('edit-task-tips').value = task.tips || '';
+    document.getElementById('edit-task-instructions').value = task.instructions || '';
+    document.getElementById('edit-task-video').value = '';
+    
+    const removeVideoButton = document.getElementById('remove-video-button');
+    if (task.videoFileName) {
+        removeVideoButton.style.display = 'block';
+    } else {
+        removeVideoButton.style.display = 'none';
+    }
+}
+
+async function saveEditedTask() {
+    if (!taskToEdit) {
+        return;
+    }
+    
+    const taskName = document.getElementById('edit-task-name').value.trim();
+    const tips = document.getElementById('edit-task-tips').value.trim();
+    const instructions = document.getElementById('edit-task-instructions').value.trim();
+    const videoFile = document.getElementById('edit-task-video').files[0];
+    
+    if (!taskName) {
+        alert('Please enter a task name');
+        return;
+    }
+    
+    try {
+        const task = await db.getTaskById(taskToEdit);
+        if (!task) {
+            alert('Task not found');
+            navigate('edit');
+            return;
+        }
+        
+        // Update task properties
+        task.name = taskName;
+        task.tips = tips;
+        task.instructions = instructions;
+        
+        // Handle video
+        if (videoFile) {
+            const videoFileName = `video_${Date.now()}_${videoFile.name}`;
+            const videoData = await fileToBase64(videoFile);
+            await db.saveVideo(videoFileName, videoData);
+            task.videoFileName = videoFileName;
+        }
+        
+        await db.updateTask(task);
+        await autoSync();
+        
+        taskToEdit = null;
+        navigate('edit');
+    } catch (error) {
+        console.error('Error saving task:', error);
+        alert('Failed to save task. Please try again.');
+    }
+}
+
+async function removeVideoFromTask() {
+    if (!taskToEdit) {
+        return;
+    }
+    
+    if (confirm('Are you sure you want to remove the video from this exercise?')) {
+        try {
+            const task = await db.getTaskById(taskToEdit);
+            if (task) {
+                task.videoFileName = null;
+                await db.updateTask(task);
+                await autoSync();
+                
+                document.getElementById('remove-video-button').style.display = 'none';
+                alert('Video removed successfully');
+            }
+        } catch (error) {
+            console.error('Error removing video:', error);
+            alert('Failed to remove video');
+        }
     }
 }
 
@@ -748,17 +926,9 @@ async function syncFromGitHub() {
         const synced = await githubSync.syncFromGitHub();
         if (synced) {
             localStorage.setItem('last_sync_time', Date.now().toString());
-            // Set flag to prevent auto-sync on reload
-            sessionStorage.setItem('just_synced', 'true');
-            alert('Successfully synced from GitHub!');
-            // Refresh the UI instead of reloading the page
-            await initializeDefaultMuscleGroups();
-            if (currentMuscleGroupId) {
-                await showDetailScreen();
-            } else {
-                await showHomeScreen();
-            }
-            updateSyncStatus();
+            alert('Successfully synced from GitHub! Refreshing...');
+            // Reload the app to show synced data
+            location.reload();
         } else {
             alert('No data found on GitHub');
         }
