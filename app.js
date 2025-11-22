@@ -149,14 +149,32 @@ async function saveNewMuscleGroup() {
     }
     
     try {
-        await db.insertMuscleGroup({ name });
-        await db.addToSyncQueue('create', 'muscleGroup', { name });
-        await autoSync();
+        // Insert the muscle group
+        const newId = await db.insertMuscleGroup({ name });
+        console.log('Muscle group inserted with ID:', newId);
+        
+        // Get the inserted group to add to sync queue
+        const insertedGroup = await db.getMuscleGroupById(newId);
+        if (insertedGroup) {
+            await db.addToSyncQueue('create', 'muscleGroup', insertedGroup);
+        }
+        
+        // Try to sync (don't fail if sync fails)
+        try {
+            await autoSync();
+        } catch (syncError) {
+            console.log('Auto-sync failed (non-critical):', syncError);
+        }
+        
+        // Close dialog and refresh list
         closeAddMuscleGroupDialog();
-        await loadMuscleGroupsList(); // Refresh the list in manage screen
+        await loadMuscleGroupsList();
+        
+        // Show success feedback
+        console.log('Workout added successfully');
     } catch (error) {
         console.error('Error saving muscle group:', error);
-        alert('Failed to save workout. Please try again.');
+        alert('Failed to save workout: ' + (error.message || 'Unknown error'));
     }
 }
 

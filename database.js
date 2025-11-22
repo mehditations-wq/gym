@@ -88,29 +88,27 @@ class GymDatabase {
     }
 
     async insertMuscleGroup(muscleGroup) {
+        // Add metadata
+        muscleGroup.lastModified = Date.now();
+        muscleGroup.deviceId = this.getDeviceId();
+        
+        // Get orderIndex if not provided
+        if (!muscleGroup.orderIndex && muscleGroup.orderIndex !== 0) {
+            const groups = await this.getAllMuscleGroups();
+            const maxOrder = groups.length > 0 
+                ? Math.max(...groups.map(g => g.orderIndex || 0))
+                : -1;
+            muscleGroup.orderIndex = maxOrder + 1;
+        }
+        
+        // Now insert with the transaction
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['muscleGroups'], 'readwrite');
             const store = transaction.objectStore('muscleGroups');
+            const request = store.add(muscleGroup);
             
-            // Add metadata
-            muscleGroup.lastModified = Date.now();
-            muscleGroup.deviceId = this.getDeviceId();
-            if (!muscleGroup.orderIndex) {
-                // Get max orderIndex and add 1
-                this.getAllMuscleGroups().then(groups => {
-                    const maxOrder = groups.length > 0 
-                        ? Math.max(...groups.map(g => g.orderIndex || 0))
-                        : -1;
-                    muscleGroup.orderIndex = maxOrder + 1;
-                    const request = store.add(muscleGroup);
-                    request.onsuccess = () => resolve(request.result);
-                    request.onerror = () => reject(request.error);
-                });
-            } else {
-                const request = store.add(muscleGroup);
-                request.onsuccess = () => resolve(request.result);
-                request.onerror = () => reject(request.error);
-            }
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
         });
     }
 
