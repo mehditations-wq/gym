@@ -89,8 +89,8 @@
             
             <div style="margin-top: 32px; padding-top: 24px; border-top: 2px solid var(--border-color);">
                 <h3>Database Settings</h3>
-                <p class="help-text">Manage your local database. Use with caution!</p>
-                <button class="outlined-button" onclick="showDatabaseWipeDialog()" style="width: 100%; margin-top: 16px; background-color: var(--error-color); color: white; border-color: var(--error-color);">Wipe Database (Fresh Start)</button>
+                <p class="help-text">Clear your workout history. Your workouts and exercises will be preserved.</p>
+                <button class="outlined-button" onclick="showDatabaseWipeDialog()" style="width: 100%; margin-top: 16px; background-color: var(--error-color); color: white; border-color: var(--error-color);">Clear Workout History</button>
             </div>
         </div>
     </div>
@@ -252,10 +252,12 @@
     <div id="add-muscle-group-dialog" class="dialog-overlay" style="display: none;">
         <div class="dialog">
             <h3>Add New Workout</h3>
-            <input type="text" id="new-muscle-group-name" placeholder="Enter workout name" style="width: 100%; padding: 12px; margin: 16px 0; border: 2px solid var(--border-color); border-radius: 8px; font-size: 16px;" />
+            <input type="text" id="new-muscle-group-name" placeholder="Enter workout name" 
+                   style="width: 100%; padding: 12px; margin: 16px 0; border: 2px solid var(--border-color); border-radius: 8px; font-size: 16px;"
+                   onkeypress="if(event.key === 'Enter') saveNewMuscleGroup()" />
             <div class="dialog-buttons">
                 <button class="outlined-button" onclick="closeAddMuscleGroupDialog()">Cancel</button>
-                <button class="primary-button" onclick="saveNewMuscleGroup()">Add</button>
+                <button class="primary-button" onclick="saveNewMuscleGroup()" id="add-workout-button">Add</button>
             </div>
         </div>
     </div>
@@ -313,14 +315,18 @@
     <!-- Database Wipe Warning Dialog -->
     <div id="database-wipe-dialog" class="dialog-overlay" style="display: none;">
         <div class="dialog" style="max-width: 500px;">
-            <h3 style="color: var(--error-color);">⚠️ Warning: Wipe Database</h3>
-            <p style="margin: 16px 0; font-weight: 500;">This will permanently delete ALL your local data:</p>
+            <h3 style="color: var(--error-color);">⚠️ Warning: Clear Workout History</h3>
+            <p style="margin: 16px 0; font-weight: 500;">This will permanently delete:</p>
             <ul style="text-align: left; margin: 16px 0; padding-left: 24px;">
+                <li>All workout history (log entries)</li>
+            </ul>
+            <p style="margin: 16px 0; font-weight: 500; color: var(--primary-color);">
+                The following will be preserved:
+            </p>
+            <ul style="text-align: left; margin: 16px 0; padding-left: 24px; color: var(--primary-color);">
                 <li>All workouts (muscle groups)</li>
-                <li>All exercises</li>
-                <li>All workout history</li>
+                <li>All exercises (tasks)</li>
                 <li>All videos</li>
-                <li>All sync queue items</li>
             </ul>
             <p style="margin: 16px 0; color: var(--error-color); font-weight: 500;">
                 This action CANNOT be undone!
@@ -334,7 +340,7 @@
             </div>
             <div class="dialog-buttons">
                 <button class="outlined-button" onclick="closeDatabaseWipeDialog()">Cancel</button>
-                <button class="primary-button delete-button" onclick="confirmDatabaseWipe()" id="confirm-wipe-button" disabled>Wipe Database</button>
+                <button class="primary-button delete-button" onclick="confirmDatabaseWipe()" id="confirm-wipe-button" disabled>Clear History</button>
             </div>
         </div>
     </div>

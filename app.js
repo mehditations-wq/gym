@@ -142,21 +142,53 @@ function closeAddMuscleGroupDialog() {
 }
 
 async function saveNewMuscleGroup() {
-    const name = document.getElementById('new-muscle-group-name').value.trim();
-    if (!name) {
-        alert('Please enter a workout name');
+    const nameInput = document.getElementById('new-muscle-group-name');
+    if (!nameInput) {
+        alert('Error: Input field not found');
         return;
     }
     
+    const name = nameInput.value.trim();
+    if (!name) {
+        alert('Please enter a workout name');
+        nameInput.focus();
+        return;
+    }
+    
+    // Disable button to prevent double-clicks
+    const addButton = document.getElementById('add-workout-button');
+    if (addButton) {
+        addButton.disabled = true;
+        addButton.textContent = 'Adding...';
+    }
+    
+    console.log('Attempting to save workout:', name);
+    
     try {
+        // Check if database is initialized
+        if (!db || !db.db) {
+            throw new Error('Database not initialized. Please refresh the page.');
+        }
+        
         // Insert the muscle group
+        console.log('Calling insertMuscleGroup...');
         const newId = await db.insertMuscleGroup({ name });
         console.log('Muscle group inserted with ID:', newId);
         
+        if (!newId) {
+            throw new Error('Failed to get ID from insert operation');
+        }
+        
         // Get the inserted group to add to sync queue
         const insertedGroup = await db.getMuscleGroupById(newId);
+        console.log('Retrieved inserted group:', insertedGroup);
+        
         if (insertedGroup) {
-            await db.addToSyncQueue('create', 'muscleGroup', insertedGroup);
+            try {
+                await db.addToSyncQueue('create', 'muscleGroup', insertedGroup);
+            } catch (queueError) {
+                console.warn('Failed to add to sync queue:', queueError);
+            }
         }
         
         // Try to sync (don't fail if sync fails)
@@ -166,15 +198,26 @@ async function saveNewMuscleGroup() {
             console.log('Auto-sync failed (non-critical):', syncError);
         }
         
-        // Close dialog and refresh list
+        // Close dialog
         closeAddMuscleGroupDialog();
+        
+        // Refresh list
+        console.log('Refreshing muscle groups list...');
         await loadMuscleGroupsList();
         
         // Show success feedback
-        console.log('Workout added successfully');
+        console.log('Workout added successfully!');
+        
     } catch (error) {
         console.error('Error saving muscle group:', error);
-        alert('Failed to save workout: ' + (error.message || 'Unknown error'));
+        console.error('Error stack:', error.stack);
+        alert('Failed to save workout: ' + (error.message || 'Unknown error') + '\n\nCheck browser console (F12) for details.');
+    } finally {
+        // Re-enable button
+        if (addButton) {
+            addButton.disabled = false;
+            addButton.textContent = 'Add';
+        }
     }
 }
 
@@ -1689,55 +1732,28 @@ async function confirmDatabaseWipe() {
     }
     
     try {
-        // Close the database connection
-        if (db.db) {
-            db.db.close();
-        }
-        
-        // Delete the database
-        const deleteRequest = indexedDB.deleteDatabase(db.dbName);
-        
-        await new Promise((resolve, reject) => {
-            deleteRequest.onsuccess = () => {
-                console.log('Database deleted successfully');
-                resolve();
-            };
-            deleteRequest.onerror = () => {
-                reject(deleteRequest.error);
-            };
-            deleteRequest.onblocked = () => {
-                console.warn('Database deletion blocked - may need to close all tabs');
-                // Still resolve, the database will be deleted when unblocked
-                resolve();
-            };
-        });
-        
-        // Clear localStorage items related to the app
-        localStorage.removeItem('last_sync_time');
-        localStorage.removeItem('last_local_change_time');
-        localStorage.removeItem('device_id');
-        // Keep GitHub token and gist ID in case user wants to sync again
+        // Only clear workout history (log entries), keep workouts and exercises
+        await db.clearAllLogEntries();
         
         closeDatabaseWipeDialog();
-        
-        // Reinitialize the database
-        await db.init();
-        await initializeDefaultMuscleGroups();
         
         // Reset app state
         currentMuscleGroupId = null;
         currentTaskIndex = 0;
         taskStates = {};
         
-        alert('Database wiped successfully! The app will now start fresh.');
+        alert('Workout history cleared successfully! Your workouts and exercises have been preserved.');
         
-        // Navigate to home screen
-        navigate('home');
-        await showHomeScreen();
-        
+        // Refresh the UI to show updated history
+        if (currentMuscleGroupId) {
+            await showDetailScreen();
+        } else {
+            navigate('home');
+            await showHomeScreen();
+        }
     } catch (error) {
-        console.error('Error wiping database:', error);
-        alert('Failed to wipe database: ' + error.message);
+        console.error('Error clearing workout history:', error);
+        alert('Failed to clear workout history: ' + error.message);
     }
 }
 

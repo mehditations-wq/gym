@@ -88,26 +88,61 @@ class GymDatabase {
     }
 
     async insertMuscleGroup(muscleGroup) {
+        if (!this.db) {
+            throw new Error('Database not initialized');
+        }
+        
         // Add metadata
         muscleGroup.lastModified = Date.now();
         muscleGroup.deviceId = this.getDeviceId();
         
-        // Get orderIndex if not provided
-        if (!muscleGroup.orderIndex && muscleGroup.orderIndex !== 0) {
-            const groups = await this.getAllMuscleGroups();
-            const maxOrder = groups.length > 0 
-                ? Math.max(...groups.map(g => g.orderIndex || 0))
-                : -1;
-            muscleGroup.orderIndex = maxOrder + 1;
+        // Get orderIndex if not provided - use count of items
+        if (muscleGroup.orderIndex === undefined || muscleGroup.orderIndex === null) {
+            try {
+                // Use count() method which is faster and doesn't load all data
+                const count = await this.getMuscleGroupCount();
+                muscleGroup.orderIndex = count;
+            } catch (error) {
+                console.warn('Failed to get count, using 0:', error);
+                muscleGroup.orderIndex = 0;
+            }
         }
         
         // Now insert with the transaction
         return new Promise((resolve, reject) => {
-            const transaction = this.db.transaction(['muscleGroups'], 'readwrite');
+            try {
+                const transaction = this.db.transaction(['muscleGroups'], 'readwrite');
+                const store = transaction.objectStore('muscleGroups');
+                const request = store.add(muscleGroup);
+                
+                request.onsuccess = () => {
+                    console.log('Insert successful, ID:', request.result);
+                    resolve(request.result);
+                };
+                request.onerror = () => {
+                    console.error('Insert error:', request.error);
+                    reject(request.error);
+                };
+                
+                transaction.onerror = () => {
+                    console.error('Transaction error:', transaction.error);
+                    reject(transaction.error);
+                };
+            } catch (error) {
+                console.error('Error creating transaction:', error);
+                reject(error);
+            }
+        });
+    }
+
+    // Get count of muscle groups (faster than getAll)
+    async getMuscleGroupCount() {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['muscleGroups'], 'readonly');
             const store = transaction.objectStore('muscleGroups');
-            const request = store.add(muscleGroup);
+            const request = store.count();
             
-            request.onsuccess = () => resolve(request.result);
+            request.onsuccess = () => resolve(request.result || 0);
             request.onerror = () => reject(request.error);
         });
     }
@@ -350,6 +385,21 @@ class GymDatabase {
             const request = store.delete(id);
 
             request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    // Clear all workout history (log entries) - keeps workouts and exercises
+    async clearAllLogEntries() {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['logEntries'], 'readwrite');
+            const store = transaction.objectStore('logEntries');
+            const request = store.clear();
+
+            request.onsuccess = () => {
+                console.log('All log entries cleared successfully');
+                resolve();
+            };
             request.onerror = () => reject(request.error);
         });
     }
