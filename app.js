@@ -19,13 +19,13 @@ async function init() {
     await db.init();
     githubSync.init();
     
-    // Initialize Firebase if configured
-    const firebaseConfig = firebaseStorage.getConfig();
-    if (firebaseConfig) {
+    // Initialize Google Drive if configured
+    const clientId = googleDriveStorage.getClientId();
+    if (clientId) {
         try {
-            await firebaseStorage.init(firebaseConfig);
+            await googleDriveStorage.init(clientId);
         } catch (error) {
-            console.error('Firebase initialization failed:', error);
+            console.error('Google Drive initialization failed:', error);
         }
     }
     
@@ -474,15 +474,20 @@ async function saveTask() {
         if (videoFile) {
             videoFileName = `video_${Date.now()}_${videoFile.name}`;
             
-            // Try to upload to Firebase if configured
-            if (firebaseStorage.isConfigured()) {
+            // Try to upload to Google Drive if configured
+            if (googleDriveStorage.isConfigured()) {
                 try {
-                    videoUrl = await firebaseStorage.uploadVideo(videoFile, videoFileName);
-                    // Also save locally as fallback
+                    // Ensure signed in
+                    if (!(await googleDriveStorage.isSignedIn())) {
+                        await googleDriveStorage.signIn();
+                    }
+                    const uploadResult = await googleDriveStorage.uploadVideo(videoFile, videoFileName);
+                    videoUrl = uploadResult.url;
+                    // Store fileId for later deletion
                     const videoData = await fileToBase64(videoFile);
                     await db.saveVideo(videoFileName, videoData);
                 } catch (error) {
-                    console.error('Firebase upload failed, saving locally only:', error);
+                    console.error('Google Drive upload failed, saving locally only:', error);
                     // Fallback to local storage
                     const videoData = await fileToBase64(videoFile);
                     await db.saveVideo(videoFileName, videoData);
@@ -959,16 +964,21 @@ async function saveEditedTask() {
         if (videoFile) {
             const videoFileName = `video_${Date.now()}_${videoFile.name}`;
             
-            // Try to upload to Firebase if configured
-            if (firebaseStorage.isConfigured()) {
+            // Try to upload to Google Drive if configured
+            if (googleDriveStorage.isConfigured()) {
                 try {
-                    const videoUrl = await firebaseStorage.uploadVideo(videoFile, videoFileName);
-                    task.videoUrl = videoUrl;
+                    // Ensure signed in
+                    if (!(await googleDriveStorage.isSignedIn())) {
+                        await googleDriveStorage.signIn();
+                    }
+                    const uploadResult = await googleDriveStorage.uploadVideo(videoFile, videoFileName);
+                    task.videoUrl = uploadResult.url;
+                    // Store fileId for later deletion (we'll store it in videoFileName or a separate field)
                     // Also save locally as fallback
                     const videoData = await fileToBase64(videoFile);
                     await db.saveVideo(videoFileName, videoData);
                 } catch (error) {
-                    console.error('Firebase upload failed, saving locally only:', error);
+                    console.error('Google Drive upload failed, saving locally only:', error);
                     // Fallback to local storage
                     const videoData = await fileToBase64(videoFile);
                     await db.saveVideo(videoFileName, videoData);
@@ -1003,12 +1013,15 @@ async function removeVideoFromTask() {
         try {
             const task = await db.getTaskById(taskToEdit);
             if (task) {
-                // Try to delete from Firebase if URL exists
-                if (task.videoUrl && firebaseStorage.isConfigured()) {
+                // Try to delete from Google Drive if URL exists
+                if (task.videoUrl && googleDriveStorage.isConfigured()) {
                     try {
-                        await firebaseStorage.deleteVideo(task.videoFileName);
+                        const fileId = googleDriveStorage.extractFileId(task.videoUrl);
+                        if (fileId) {
+                            await googleDriveStorage.deleteVideo(fileId);
+                        }
                     } catch (error) {
-                        console.error('Failed to delete from Firebase:', error);
+                        console.error('Failed to delete from Google Drive:', error);
                     }
                 }
                 
@@ -1032,7 +1045,7 @@ async function playVideo(videoFileName, videoUrl) {
     try {
         let videoSrc = null;
         
-        // Try Firebase URL first
+        // Try Google Drive URL first (or any cloud URL)
         if (videoUrl) {
             videoSrc = videoUrl;
         } else if (videoFileName) {
@@ -1436,17 +1449,30 @@ async function showSyncScreen() {
             lastSyncElement.textContent = 'Not synced yet';
         }
         
-        // Update Firebase status
-        const firebaseStatus = document.getElementById('firebase-status');
-        const firebaseButton = document.getElementById('firebase-config-button');
-        if (firebaseStorage.isConfigured()) {
-            firebaseStatus.textContent = '✓ Firebase Storage configured';
-            firebaseStatus.style.color = 'green';
-            firebaseButton.textContent = 'Reconfigure Firebase';
+        // Update Google Drive status
+        const googleDriveStatus = document.getElementById('google-drive-status');
+        const googleDriveButton = document.getElementById('google-drive-config-button');
+        const signInButton = document.getElementById('google-drive-signin-button');
+        
+        if (googleDriveStorage.isConfigured()) {
+            googleDriveStorage.isSignedIn().then(isSignedIn => {
+                if (isSignedIn) {
+                    googleDriveStatus.textContent = '✓ Google Drive configured and signed in';
+                    googleDriveStatus.style.color = 'green';
+                    googleDriveButton.textContent = 'Reconfigure Google Drive';
+                    signInButton.style.display = 'none';
+                } else {
+                    googleDriveStatus.textContent = '⚠ Google Drive configured but not signed in. Click "Sign In" to enable video sync.';
+                    googleDriveStatus.style.color = 'orange';
+                    googleDriveButton.textContent = 'Reconfigure Google Drive';
+                    signInButton.style.display = 'block';
+                }
+            });
         } else {
-            firebaseStatus.textContent = '⚠ Firebase Storage not configured. Videos will only be stored locally.';
-            firebaseStatus.style.color = 'orange';
-            firebaseButton.textContent = 'Configure Firebase';
+            googleDriveStatus.textContent = '⚠ Google Drive not configured. Videos will only be stored locally.';
+            googleDriveStatus.style.color = 'orange';
+            googleDriveButton.textContent = 'Configure Google Drive';
+            signInButton.style.display = 'none';
         }
         
         // Show sync status info
@@ -1610,47 +1636,60 @@ function disconnectGitHub() {
     }
 }
 
-// Firebase Config Dialog
-function showFirebaseConfigDialog() {
-    const config = firebaseStorage.getConfig();
-    if (config) {
-        document.getElementById('firebase-api-key').value = config.apiKey || '';
-        document.getElementById('firebase-auth-domain').value = config.authDomain || '';
-        document.getElementById('firebase-project-id').value = config.projectId || '';
-        document.getElementById('firebase-storage-bucket').value = config.storageBucket || '';
-        document.getElementById('firebase-messaging-sender-id').value = config.messagingSenderId || '';
-        document.getElementById('firebase-app-id').value = config.appId || '';
+// Google Drive Config Dialog
+function showGoogleDriveConfigDialog() {
+    const clientId = googleDriveStorage.getClientId();
+    if (clientId) {
+        document.getElementById('google-drive-client-id').value = clientId;
     }
-    document.getElementById('firebase-config-dialog').style.display = 'flex';
+    document.getElementById('google-drive-config-dialog').style.display = 'flex';
 }
 
-function closeFirebaseConfigDialog() {
-    document.getElementById('firebase-config-dialog').style.display = 'none';
+function closeGoogleDriveConfigDialog() {
+    document.getElementById('google-drive-config-dialog').style.display = 'none';
 }
 
-async function saveFirebaseConfig() {
-    const config = {
-        apiKey: document.getElementById('firebase-api-key').value.trim(),
-        authDomain: document.getElementById('firebase-auth-domain').value.trim(),
-        projectId: document.getElementById('firebase-project-id').value.trim(),
-        storageBucket: document.getElementById('firebase-storage-bucket').value.trim(),
-        messagingSenderId: document.getElementById('firebase-messaging-sender-id').value.trim(),
-        appId: document.getElementById('firebase-app-id').value.trim()
-    };
+async function saveGoogleDriveConfig() {
+    const clientId = document.getElementById('google-drive-client-id').value.trim();
     
-    if (!config.apiKey || !config.projectId || !config.storageBucket) {
-        alert('Please fill in at least API Key, Project ID, and Storage Bucket');
+    if (!clientId) {
+        alert('Please enter your OAuth Client ID');
         return;
     }
     
+    if (!clientId.includes('.apps.googleusercontent.com')) {
+        if (!confirm('The Client ID should end with .apps.googleusercontent.com. Continue anyway?')) {
+            return;
+        }
+    }
+    
     try {
-        firebaseStorage.setConfig(config);
-        await firebaseStorage.init(config);
-        closeFirebaseConfigDialog();
+        googleDriveStorage.setClientId(clientId);
+        await googleDriveStorage.init(clientId);
+        closeGoogleDriveConfigDialog();
         showSyncScreen();
-        alert('Firebase Storage configured successfully!');
+        alert('Google Drive configured successfully! Please sign in to enable video sync.');
     } catch (error) {
-        alert('Failed to configure Firebase: ' + error.message);
+        alert('Failed to configure Google Drive: ' + error.message);
+    }
+}
+
+async function signInGoogleDrive() {
+    try {
+        if (!googleDriveStorage.isConfigured()) {
+            alert('Please configure Google Drive first');
+            return;
+        }
+        
+        await googleDriveStorage.signIn();
+        showSyncScreen();
+        alert('Successfully signed in to Google Drive!');
+    } catch (error) {
+        if (error.error === 'popup_closed_by_user') {
+            alert('Sign in was cancelled');
+        } else {
+            alert('Failed to sign in: ' + error.message);
+        }
     }
 }
 

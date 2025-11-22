@@ -5,9 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gym Tracker</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage-compat.js"></script>
+    <!-- Google API for Drive -->
+    <script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
     <!-- Home Screen -->
@@ -73,10 +72,11 @@
                 <p id="last-sync-time" class="help-text" style="font-weight: 500; margin-top: 16px;"></p>
                 <p id="sync-status-info" class="help-text" style="margin-top: 8px; font-size: 12px;"></p>
                 <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-color);">
-                    <h3>Video Sync (Firebase Storage)</h3>
-                    <p class="help-text">Configure Firebase Storage to sync videos across devices.</p>
-                    <p id="firebase-status" class="help-text" style="margin: 8px 0;"></p>
-                    <button class="outlined-button" onclick="showFirebaseConfigDialog()" id="firebase-config-button">Configure Firebase</button>
+                    <h3>Video Sync (Google Drive)</h3>
+                    <p class="help-text">Configure Google Drive to sync videos across devices. No payment method required!</p>
+                    <p id="google-drive-status" class="help-text" style="margin: 8px 0;"></p>
+                    <button class="outlined-button" onclick="showGoogleDriveConfigDialog()" id="google-drive-config-button">Configure Google Drive</button>
+                    <button class="outlined-button" onclick="signInGoogleDrive()" id="google-drive-signin-button" style="display: none; margin-top: 8px;">Sign In to Google</button>
                 </div>
             </div>
 
@@ -300,38 +300,31 @@
         </div>
     </div>
 
-    <!-- Firebase Config Dialog -->
-    <div id="firebase-config-dialog" class="dialog-overlay" style="display: none;">
+    <!-- Google Drive Config Dialog -->
+    <div id="google-drive-config-dialog" class="dialog-overlay" style="display: none;">
         <div class="dialog" style="max-width: 600px;">
-            <h3>Firebase Storage Setup</h3>
-            <p class="help-text">Configure Firebase Storage to sync videos across devices. Get your config from Firebase Console.</p>
-            <div class="edit-field">
-                <label>API Key</label>
-                <input type="text" id="firebase-api-key" placeholder="AIza..." />
+            <h3>Google Drive Setup</h3>
+            <p class="help-text">Configure Google Drive to sync videos across devices. Get your Client ID from Google Cloud Console.</p>
+            <div class="sync-instructions" style="margin: 16px 0;">
+                <p><strong>How to get Client ID:</strong></p>
+                <ol style="text-align: left; margin: 8px 0; padding-left: 20px;">
+                    <li>Go to <a href="https://console.cloud.google.com/" target="_blank">Google Cloud Console</a></li>
+                    <li>Create a project (or select existing)</li>
+                    <li>Enable "Google Drive API"</li>
+                    <li>Go to "Credentials" → "Create Credentials" → "OAuth client ID"</li>
+                    <li>Application type: "Web application"</li>
+                    <li>Add authorized origins: <code>http://localhost</code> (and your domain)</li>
+                    <li>Copy the Client ID and paste below</li>
+                </ol>
             </div>
             <div class="edit-field">
-                <label>Auth Domain</label>
-                <input type="text" id="firebase-auth-domain" placeholder="your-project.firebaseapp.com" />
-            </div>
-            <div class="edit-field">
-                <label>Project ID</label>
-                <input type="text" id="firebase-project-id" placeholder="your-project-id" />
-            </div>
-            <div class="edit-field">
-                <label>Storage Bucket</label>
-                <input type="text" id="firebase-storage-bucket" placeholder="your-project.appspot.com" />
-            </div>
-            <div class="edit-field">
-                <label>Messaging Sender ID</label>
-                <input type="text" id="firebase-messaging-sender-id" placeholder="123456789" />
-            </div>
-            <div class="edit-field">
-                <label>App ID</label>
-                <input type="text" id="firebase-app-id" placeholder="1:123456789:web:abc123" />
+                <label>OAuth Client ID</label>
+                <input type="text" id="google-drive-client-id" placeholder="xxxxx.apps.googleusercontent.com" />
+                <p class="help-text">Looks like: xxxxx.apps.googleusercontent.com</p>
             </div>
             <div class="dialog-buttons">
-                <button class="outlined-button" onclick="closeFirebaseConfigDialog()">Cancel</button>
-                <button class="primary-button" onclick="saveFirebaseConfig()">Save</button>
+                <button class="outlined-button" onclick="closeGoogleDriveConfigDialog()">Cancel</button>
+                <button class="primary-button" onclick="saveGoogleDriveConfig()">Save</button>
             </div>
         </div>
     </div>
@@ -349,7 +342,7 @@
     </div>
 
     <script src="database.js"></script>
-    <script src="firebase-storage.js"></script>
+    <script src="google-drive-storage.js"></script>
     <script src="github-sync.js"></script>
     <script src="app.js"></script>
 </body>
