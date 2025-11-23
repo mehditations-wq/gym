@@ -912,7 +912,21 @@ async function saveTask() {
         
         await db.insertTask(task);
         await db.addToSyncQueue('create', 'task', task);
-        await autoSync();
+        
+        // Try to sync, but don't let sync errors prevent navigation
+        try {
+            await autoSync();
+        } catch (syncError) {
+            console.log('Auto-sync failed (non-critical):', syncError);
+        }
+        
+        // Close add task screen and navigate to manage tasks
+        const addTaskScreen = document.getElementById('add-task-screen');
+        if (addTaskScreen) {
+            addTaskScreen.classList.remove('active');
+        }
+        
+        // Always navigate to manage tasks after saving
         navigate('manage-tasks');
     } catch (error) {
         console.error('Error saving task:', error);
