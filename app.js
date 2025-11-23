@@ -461,20 +461,37 @@ async function removeTaskFromWorkout(taskId) {
 let selectedTaskIds = [];
 
 async function showAddTaskToWorkoutDialog() {
+    console.log('showAddTaskToWorkoutDialog called, currentWorkoutId:', currentWorkoutId);
+    
+    if (!currentWorkoutId) {
+        alert('No workout selected. Please go back and select a workout first.');
+        return;
+    }
+    
     const dialog = document.getElementById('add-task-to-workout-dialog');
     const list = document.getElementById('available-tasks-list');
     
-    if (!dialog || !list) {
-        console.error('Dialog elements not found');
+    if (!dialog) {
+        console.error('add-task-to-workout-dialog element not found');
+        alert('Dialog element not found. Please refresh the page.');
+        return;
+    }
+    
+    if (!list) {
+        console.error('available-tasks-list element not found');
+        alert('Tasks list element not found. Please refresh the page.');
         return;
     }
     
     try {
         const workout = await db.getWorkoutById(currentWorkoutId);
         if (!workout) {
-            alert('Workout not found');
+            alert('Workout not found. Please refresh the page.');
+            console.error('Workout not found for ID:', currentWorkoutId);
             return;
         }
+        
+        console.log('Workout found:', workout);
         
         const currentTaskIds = workout.taskIds || [];
         const allTasks = await db.getAllTasks();
@@ -506,10 +523,19 @@ async function showAddTaskToWorkoutDialog() {
             });
         }
         
+        // Reset button state
+        const addButton = document.getElementById('add-selected-tasks-button');
+        if (addButton) {
+            addButton.disabled = true;
+            addButton.textContent = 'Add Tasks';
+        }
+        
         dialog.style.display = 'flex';
+        console.log('Dialog displayed successfully');
     } catch (error) {
         console.error('Error showing add task dialog:', error);
-        alert('Error loading tasks: ' + error.message);
+        console.error('Error stack:', error.stack);
+        alert('Error loading tasks: ' + error.message + '\n\nCheck browser console (F12) for details.');
     }
 }
 
@@ -546,38 +572,57 @@ function closeAddTaskToWorkoutDialog() {
 }
 
 async function addSelectedTasksToWorkout() {
+    console.log('addSelectedTasksToWorkout called, selectedTaskIds:', selectedTaskIds);
+    
     if (selectedTaskIds.length === 0) {
         alert('Please select at least one task to add');
+        return;
+    }
+    
+    if (!currentWorkoutId) {
+        alert('No workout selected. Please go back and select a workout first.');
         return;
     }
     
     try {
         const workout = await db.getWorkoutById(currentWorkoutId);
         if (!workout) {
-            alert('Workout not found');
+            alert('Workout not found. Please refresh the page.');
+            console.error('Workout not found for ID:', currentWorkoutId);
             return;
         }
+        
+        console.log('Adding tasks to workout:', workout.name);
         
         if (!workout.taskIds) {
             workout.taskIds = [];
         }
         
         // Add selected tasks (avoid duplicates)
+        let addedCount = 0;
         selectedTaskIds.forEach(taskId => {
             if (!workout.taskIds.includes(taskId)) {
                 workout.taskIds.push(taskId);
+                addedCount++;
             }
         });
+        
+        if (addedCount === 0) {
+            alert('Selected tasks are already in this workout');
+            return;
+        }
         
         await db.updateWorkout(workout);
         await db.addToSyncQueue('update', 'workout', workout);
         await loadWorkoutTasksList();
         await autoSync();
         
+        console.log('Tasks added successfully:', addedCount, 'tasks');
         closeAddTaskToWorkoutDialog();
     } catch (error) {
         console.error('Error adding tasks to workout:', error);
-        alert('Error adding tasks: ' + error.message);
+        console.error('Error stack:', error.stack);
+        alert('Error adding tasks: ' + error.message + '\n\nCheck browser console (F12) for details.');
     }
 }
 
