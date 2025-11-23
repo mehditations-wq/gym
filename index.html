@@ -133,11 +133,13 @@
     <div id="add-task-to-workout-dialog" class="dialog-overlay" style="display: none;">
         <div class="dialog" style="max-width: 500px; max-height: 70vh; overflow-y: auto;">
             <h3>Select Tasks to Add</h3>
-            <div id="available-tasks-list" style="max-height: 400px; overflow-y: auto;">
+            <p style="margin: 8px 0 16px 0; color: var(--text-secondary); font-size: 14px;">Click on tasks to select them, then click "Add Tasks"</p>
+            <div id="available-tasks-list" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px;">
                 <!-- Available tasks will be inserted here -->
             </div>
-            <div class="dialog-buttons">
+            <div class="dialog-buttons" style="margin-top: 16px;">
                 <button class="outlined-button" onclick="closeAddTaskToWorkoutDialog()">Cancel</button>
+                <button class="primary-button" id="add-selected-tasks-button" onclick="addSelectedTasksToWorkout()" disabled>Add Tasks</button>
             </div>
         </div>
     </div>

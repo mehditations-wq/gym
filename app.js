@@ -457,6 +457,130 @@ async function removeTaskFromWorkout(taskId) {
     }
 }
 
+// Add Task to Workout Dialog
+let selectedTaskIds = [];
+
+async function showAddTaskToWorkoutDialog() {
+    const dialog = document.getElementById('add-task-to-workout-dialog');
+    const list = document.getElementById('available-tasks-list');
+    
+    if (!dialog || !list) {
+        console.error('Dialog elements not found');
+        return;
+    }
+    
+    try {
+        const workout = await db.getWorkoutById(currentWorkoutId);
+        if (!workout) {
+            alert('Workout not found');
+            return;
+        }
+        
+        const currentTaskIds = workout.taskIds || [];
+        const allTasks = await db.getAllTasks();
+        const availableTasks = allTasks.filter(task => !currentTaskIds.includes(task.id));
+        
+        selectedTaskIds = []; // Reset selection
+        
+        list.innerHTML = '';
+        
+        if (availableTasks.length === 0) {
+            list.innerHTML = '<p style="padding: 16px; text-align: center; color: var(--text-secondary);">All tasks are already in this workout. Create new tasks in the "Manage Tasks" screen first.</p>';
+        } else {
+            availableTasks.forEach(task => {
+                const item = document.createElement('div');
+                item.className = 'task-item';
+                item.style.padding = '12px';
+                item.style.cursor = 'pointer';
+                item.style.borderBottom = '1px solid var(--border-color)';
+                item.onclick = () => toggleTaskSelection(task.id, item);
+                item.innerHTML = `
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <input type="checkbox" id="task-checkbox-${task.id}" 
+                               onclick="event.stopPropagation(); toggleTaskSelection(${task.id}, this.parentElement.parentElement)"
+                               style="width: 20px; height: 20px; cursor: pointer;" />
+                        <div class="task-name" style="flex: 1;">${task.name}</div>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+        
+        dialog.style.display = 'flex';
+    } catch (error) {
+        console.error('Error showing add task dialog:', error);
+        alert('Error loading tasks: ' + error.message);
+    }
+}
+
+function toggleTaskSelection(taskId, element) {
+    const checkbox = document.getElementById(`task-checkbox-${taskId}`);
+    if (!checkbox) return;
+    
+    if (selectedTaskIds.includes(taskId)) {
+        selectedTaskIds = selectedTaskIds.filter(id => id !== taskId);
+        checkbox.checked = false;
+        element.style.backgroundColor = '';
+    } else {
+        selectedTaskIds.push(taskId);
+        checkbox.checked = true;
+        element.style.backgroundColor = 'var(--primary-color-light)';
+    }
+    
+    // Update add button state
+    const addButton = document.getElementById('add-selected-tasks-button');
+    if (addButton) {
+        addButton.disabled = selectedTaskIds.length === 0;
+        addButton.textContent = selectedTaskIds.length > 0 
+            ? `Add ${selectedTaskIds.length} Task${selectedTaskIds.length > 1 ? 's' : ''}`
+            : 'Add Tasks';
+    }
+}
+
+function closeAddTaskToWorkoutDialog() {
+    const dialog = document.getElementById('add-task-to-workout-dialog');
+    if (dialog) {
+        dialog.style.display = 'none';
+    }
+    selectedTaskIds = [];
+}
+
+async function addSelectedTasksToWorkout() {
+    if (selectedTaskIds.length === 0) {
+        alert('Please select at least one task to add');
+        return;
+    }
+    
+    try {
+        const workout = await db.getWorkoutById(currentWorkoutId);
+        if (!workout) {
+            alert('Workout not found');
+            return;
+        }
+        
+        if (!workout.taskIds) {
+            workout.taskIds = [];
+        }
+        
+        // Add selected tasks (avoid duplicates)
+        selectedTaskIds.forEach(taskId => {
+            if (!workout.taskIds.includes(taskId)) {
+                workout.taskIds.push(taskId);
+            }
+        });
+        
+        await db.updateWorkout(workout);
+        await db.addToSyncQueue('update', 'workout', workout);
+        await loadWorkoutTasksList();
+        await autoSync();
+        
+        closeAddTaskToWorkoutDialog();
+    } catch (error) {
+        console.error('Error adding tasks to workout:', error);
+        alert('Error adding tasks: ' + error.message);
+    }
+}
+
 // Tasks Management Screen
 let isTaskOrderMode = false;
 
