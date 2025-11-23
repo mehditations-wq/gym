@@ -468,18 +468,33 @@ async function showAddTaskToWorkoutDialog() {
         return;
     }
     
+    // Wait a moment to ensure DOM is ready
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Hide all screens first
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    
     const screen = document.getElementById('add-task-to-workout-screen');
     const list = document.getElementById('available-tasks-list');
     
     if (!screen) {
-        console.error('add-task-to-workout-screen element not found');
-        alert('Screen element not found. Please refresh the page.');
+        console.error('add-task-to-workout-screen element not found in DOM');
+        console.error('Available screen elements:', Array.from(document.querySelectorAll('.screen')).map(s => s.id));
+        alert('Screen not found. Please refresh the page (Ctrl+F5 or Cmd+Shift+R to clear cache).');
+        // Try to navigate back
+        if (currentWorkoutId) {
+            navigate('edit');
+        }
         return;
     }
     
     if (!list) {
-        console.error('available-tasks-list element not found');
-        alert('Tasks list element not found. Please refresh the page.');
+        console.error('available-tasks-list element not found in screen');
+        alert('Tasks list not found. Please refresh the page.');
+        // Try to navigate back
+        if (currentWorkoutId) {
+            navigate('edit');
+        }
         return;
     }
     
@@ -533,7 +548,8 @@ async function showAddTaskToWorkoutDialog() {
             addButton.textContent = 'Add Tasks';
         }
         
-        // Show the screen
+        // Show the screen (hide all others first)
+        document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
         screen.classList.add('active');
         console.log('Screen displayed successfully');
     } catch (error) {
@@ -574,7 +590,11 @@ function closeAddTaskToWorkoutDialog() {
     }
     selectedTaskIds = [];
     // Navigate back to edit screen
-    navigate('edit');
+    if (currentWorkoutId) {
+        navigate('edit');
+    } else {
+        navigate('home');
+    }
 }
 
 async function addSelectedTasksToWorkout() {
