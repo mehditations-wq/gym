@@ -465,15 +465,24 @@ async function showManageTasksScreen() {
 }
 
 async function showManageTasksScreenContent() {
-    const screen = document.getElementById('manage-tasks-screen');
-    screen.classList.add('active');
-    
-    isTaskOrderMode = false;
-    const orderToggle = document.getElementById('task-order-toggle');
-    if (orderToggle) {
-        orderToggle.textContent = 'ORDER';
+    try {
+        const screen = document.getElementById('manage-tasks-screen');
+        if (!screen) {
+            console.error('manage-tasks-screen element not found');
+            return;
+        }
+        screen.classList.add('active');
+        
+        isTaskOrderMode = false;
+        const orderToggle = document.getElementById('task-order-toggle');
+        if (orderToggle) {
+            orderToggle.textContent = 'ORDER';
+        }
+        await loadAllTasksList();
+    } catch (error) {
+        console.error('Error showing manage tasks screen:', error);
+        alert('Error loading Manage Tasks screen: ' + error.message);
     }
-    await loadAllTasksList();
 }
 
 function toggleTaskOrderMode() {
@@ -486,57 +495,85 @@ function toggleTaskOrderMode() {
 }
 
 async function loadAllTasksList() {
-    const allTasks = await db.getAllTasks();
-    const list = document.getElementById('all-tasks-list');
-    list.innerHTML = '';
-    
-    allTasks.forEach((task, index) => {
-        const item = document.createElement('div');
-        item.className = `task-item ${isTaskOrderMode ? 'order-mode' : ''}`;
-        item.innerHTML = `
-            ${isTaskOrderMode ? `
-                <div class="task-order-controls">
-                    <button onclick="moveTaskUp(${index})" ${index === 0 ? 'disabled' : ''}>↑</button>
-                    <button onclick="moveTaskDown(${index})" ${index === allTasks.length - 1 ? 'disabled' : ''}>↓</button>
-                </div>
-            ` : ''}
-            <div class="task-name" onclick="editTask(${task.id})" style="cursor: pointer; flex: 1;">${task.name}</div>
-            <button class="text-button" onclick="showTaskHistory(${task.id})" style="margin-right: 8px;" title="View History">📊</button>
-            <button class="delete-button-icon" onclick="showDeleteTaskDialog(${task.id})">🗑️</button>
-        `;
-        list.appendChild(item);
-    });
+    try {
+        const list = document.getElementById('all-tasks-list');
+        if (!list) {
+            console.error('all-tasks-list element not found');
+            return;
+        }
+        
+        const allTasks = await db.getAllTasks();
+        list.innerHTML = '';
+        
+        if (allTasks.length === 0) {
+            list.innerHTML = '<p style="padding: 16px; text-align: center; color: var(--text-secondary);">No tasks yet. Click "+ Add Task" to create your first task.</p>';
+            return;
+        }
+        
+        allTasks.forEach((task, index) => {
+            const item = document.createElement('div');
+            item.className = `task-item ${isTaskOrderMode ? 'order-mode' : ''}`;
+            item.innerHTML = `
+                ${isTaskOrderMode ? `
+                    <div class="task-order-controls">
+                        <button onclick="moveTaskUp(${index})" ${index === 0 ? 'disabled' : ''}>↑</button>
+                        <button onclick="moveTaskDown(${index})" ${index === allTasks.length - 1 ? 'disabled' : ''}>↓</button>
+                    </div>
+                ` : ''}
+                <div class="task-name" onclick="editTask(${task.id})" style="cursor: pointer; flex: 1;">${task.name}</div>
+                <button class="text-button" onclick="showTaskHistory(${task.id})" style="margin-right: 8px;" title="View History">📊</button>
+                <button class="delete-button-icon" onclick="showDeleteTaskDialog(${task.id})">🗑️</button>
+            `;
+            list.appendChild(item);
+        });
+    } catch (error) {
+        console.error('Error loading tasks list:', error);
+        const list = document.getElementById('all-tasks-list');
+        if (list) {
+            list.innerHTML = '<p style="padding: 16px; text-align: center; color: var(--error-color);">Error loading tasks. Please refresh the page.</p>';
+        }
+    }
 }
 
 async function moveTaskUp(index) {
-    const allTasks = await db.getAllTasks();
-    if (index > 0) {
-        const temp = allTasks[index].orderIndex;
-        allTasks[index].orderIndex = allTasks[index - 1].orderIndex;
-        allTasks[index - 1].orderIndex = temp;
-        
-        await db.updateTask(allTasks[index]);
-        await db.updateTask(allTasks[index - 1]);
-        await db.addToSyncQueue('update', 'task', allTasks[index]);
-        await db.addToSyncQueue('update', 'task', allTasks[index - 1]);
-        await loadAllTasksList();
-        await autoSync();
+    try {
+        const allTasks = await db.getAllTasks();
+        if (index > 0 && index < allTasks.length) {
+            const temp = allTasks[index].orderIndex;
+            allTasks[index].orderIndex = allTasks[index - 1].orderIndex;
+            allTasks[index - 1].orderIndex = temp;
+            
+            await db.updateTask(allTasks[index]);
+            await db.updateTask(allTasks[index - 1]);
+            await db.addToSyncQueue('update', 'task', allTasks[index]);
+            await db.addToSyncQueue('update', 'task', allTasks[index - 1]);
+            await loadAllTasksList();
+            await autoSync();
+        }
+    } catch (error) {
+        console.error('Error moving task up:', error);
+        alert('Error moving task: ' + error.message);
     }
 }
 
 async function moveTaskDown(index) {
-    const allTasks = await db.getAllTasks();
-    if (index < allTasks.length - 1) {
-        const temp = allTasks[index].orderIndex;
-        allTasks[index].orderIndex = allTasks[index + 1].orderIndex;
-        allTasks[index + 1].orderIndex = temp;
-        
-        await db.updateTask(allTasks[index]);
-        await db.updateTask(allTasks[index + 1]);
-        await db.addToSyncQueue('update', 'task', allTasks[index]);
-        await db.addToSyncQueue('update', 'task', allTasks[index + 1]);
-        await loadAllTasksList();
-        await autoSync();
+    try {
+        const allTasks = await db.getAllTasks();
+        if (index < allTasks.length - 1 && index >= 0) {
+            const temp = allTasks[index].orderIndex;
+            allTasks[index].orderIndex = allTasks[index + 1].orderIndex;
+            allTasks[index + 1].orderIndex = temp;
+            
+            await db.updateTask(allTasks[index]);
+            await db.updateTask(allTasks[index + 1]);
+            await db.addToSyncQueue('update', 'task', allTasks[index]);
+            await db.addToSyncQueue('update', 'task', allTasks[index + 1]);
+            await loadAllTasksList();
+            await autoSync();
+        }
+    } catch (error) {
+        console.error('Error moving task down:', error);
+        alert('Error moving task: ' + error.message);
     }
 }
 
@@ -1779,7 +1816,7 @@ async function syncFromGitHub() {
             localStorage.removeItem('last_local_change_time');
             
             // Refresh the UI to show synced data (NO PAGE RELOAD)
-            await initializeDefaultMuscleGroups();
+            await initializeDefaultWorkouts();
             const currentScreen = document.querySelector('.screen.active');
             if (currentScreen && currentScreen.id === 'home-screen') {
                 await showHomeScreen();
