@@ -85,7 +85,8 @@ function navigate(screen) {
             showWorkoutScreen();
             break;
         case 'history':
-            showHistoryScreen();
+            // History screen is shown via showTaskHistory(taskId)
+            // Don't call showHistoryScreen() here as it needs a taskId
             break;
         case 'sync':
             showSyncScreen();
@@ -95,6 +96,9 @@ function navigate(screen) {
             break;
         case 'manage-muscle-groups':
             showManageWorkoutsScreen();
+            break;
+        case 'manage-tasks':
+            showManageTasksScreenContent();
             break;
     }
 }
@@ -497,6 +501,7 @@ async function loadAllTasksList() {
                 </div>
             ` : ''}
             <div class="task-name" onclick="editTask(${task.id})" style="cursor: pointer; flex: 1;">${task.name}</div>
+            <button class="text-button" onclick="showTaskHistory(${task.id})" style="margin-right: 8px;" title="View History">📊</button>
             <button class="delete-button-icon" onclick="showDeleteTaskDialog(${task.id})">🗑️</button>
         `;
         list.appendChild(item);
@@ -561,6 +566,12 @@ async function confirmDelete() {
         }
         await autoSync();
     }
+}
+
+// Show history for a specific task
+async function showTaskHistory(taskId) {
+    navigate('history');
+    await showHistoryScreen(taskId);
 }
 
 // Add Task Screen
@@ -1218,49 +1229,52 @@ function toggleCollapsible(element) {
     element.classList.toggle('expanded');
 }
 
-// History Screen
+// History Screen - Shows history for a specific task
 let entryToEdit = null;
+let currentTaskForHistory = null;
 
-async function showHistoryScreen() {
+async function showHistoryScreen(taskId) {
     const screen = document.getElementById('history-screen');
     screen.classList.add('active');
     
-    const tasks = await db.getTasksByWorkout(currentWorkoutId);
+    currentTaskForHistory = taskId;
+    const task = await db.getTaskById(taskId);
+    if (!task) {
+        alert('Task not found');
+        navigate('home');
+        return;
+    }
+    
+    document.getElementById('history-title').textContent = `${task.name} - History`;
+    
+    const entries = await db.getLogEntriesByTask(taskId);
     const list = document.getElementById('history-list');
     list.innerHTML = '';
     
-    for (const task of tasks) {
-        const entries = await db.getLogEntriesByTask(task.id);
-        if (entries.length > 0) {
-            const item = document.createElement('div');
-            item.className = 'history-task-item';
-            
-            const entriesHtml = entries.map(entry => {
-                const setsDisplay = Array.isArray(entry.sets) 
-                    ? entry.sets.map(s => `${s.reps}×${s.weightKg}kg`).join(', ')
-                    : `${entry.sets} sets × ${entry.reps} reps`;
-                return `
-                    <div class="history-entry" onclick="editHistoryEntry(${entry.id})">
-                        <div>${setsDisplay}</div>
-                        <div>${Array.isArray(entry.sets) ? entry.sets.reduce((sum, s) => sum + s.reps, 0) : entry.reps} reps</div>
-                        <div>${Array.isArray(entry.sets) ? entry.sets.map(s => s.weightKg).join('/') : entry.weightKg} kg</div>
-                        <div>${formatDate(entry.date)}</div>
-                    </div>
-                `;
-            }).join('');
-            
-            item.innerHTML = `
-                <div class="history-task-header" onclick="toggleHistoryTask(this.parentElement)">
-                    <div class="history-task-name">${task.name}</div>
-                    <div class="history-entry-count">${entries.length} entries</div>
-                </div>
-                <div class="history-entries">
-                    ${entriesHtml}
-                </div>
-            `;
-            list.appendChild(item);
-        }
+    if (entries.length === 0) {
+        list.innerHTML = '<p style="padding: 16px; text-align: center; color: var(--text-secondary);">No workout history for this task yet.</p>';
+        return;
     }
+    
+    // Sort entries by date (newest first)
+    entries.sort((a, b) => b.date - a.date);
+    
+    entries.forEach(entry => {
+        const setsDisplay = Array.isArray(entry.sets) 
+            ? entry.sets.map(s => `${s.reps}×${s.weightKg}kg`).join(', ')
+            : `${entry.sets} sets × ${entry.reps} reps`;
+        
+        const item = document.createElement('div');
+        item.className = 'history-entry';
+        item.onclick = () => editHistoryEntry(entry.id);
+        item.innerHTML = `
+            <div>${setsDisplay}</div>
+            <div>${Array.isArray(entry.sets) ? entry.sets.reduce((sum, s) => sum + s.reps, 0) : entry.reps} reps</div>
+            <div>${Array.isArray(entry.sets) ? entry.sets.map(s => s.weightKg).join('/') : entry.weightKg} kg</div>
+            <div>${formatDate(entry.date)}</div>
+        `;
+        list.appendChild(item);
+    });
 }
 
 let historyEntrySets = [];
@@ -1393,7 +1407,9 @@ async function saveEditedHistoryEntry() {
     await autoSync();
     
     closeEditHistoryEntryDialog();
-    await showHistoryScreen();
+    if (currentTaskForHistory) {
+        await showHistoryScreen(currentTaskForHistory);
+    }
 }
 
 async function deleteHistoryEntry() {
@@ -1405,7 +1421,9 @@ async function deleteHistoryEntry() {
         await db.addToSyncQueue('delete', 'logEntry', entry);
         await autoSync();
         closeEditHistoryEntryDialog();
-        await showHistoryScreen();
+        if (currentTaskForHistory) {
+        await showHistoryScreen(currentTaskForHistory);
+    }
     }
 }
 

@@ -109,7 +109,6 @@
                 This routine is empty. Please add tasks in the Edit screen.
             </p>
             <button class="outlined-button" onclick="navigate('edit')">EDIT</button>
-            <button class="outlined-button" onclick="navigate('history')">HISTORY</button>
         </div>
     </div>
 
@@ -255,8 +254,8 @@
     <!-- History Screen -->
     <div id="history-screen" class="screen">
         <header class="app-header">
-            <button class="back-button" onclick="navigate('detail')">← Back</button>
-            <h1>History</h1>
+            <button class="back-button" onclick="navigate('home')">← Back</button>
+            <h1 id="history-title">Task History</h1>
         </header>
         <div class="history-content">
             <div id="history-list" class="history-list">
