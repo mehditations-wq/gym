@@ -169,39 +169,44 @@ class GitHubSync {
         }
 
         // Merge log entries: combine existing remote entries with new local entries
+        // Professional approach: Use content-based hashing for O(1) duplicate detection
         let mergedLogEntries = [];
+        const entryHashMap = new Map(); // Map<hash, entry> for fast lookup
+        
+        // First, add all existing remote entries to the map
         if (existingData && existingData.logEntries) {
-            // Start with existing remote entries
-            mergedLogEntries = [...existingData.logEntries];
-            
-            // Add local entries that don't exist remotely
-            for (const localEntry of localLogEntries) {
-                // Find the task for this entry
-                const task = allTasks.find(t => t.id === localEntry.taskId);
-                if (!task) continue;
-
-                // Check if this entry exists in remote data
-                const existsInRemote = existingData.logEntries.some(remoteEntry => {
-                    // Find the remote task by name
-                    const remoteTask = existingData.tasks?.find(t => t.id === remoteEntry.taskId);
-                    if (!remoteTask || remoteTask.name.toLowerCase() !== task.name.toLowerCase()) {
-                        return false;
-                    }
-                    
-                    // Check if entry matches (same date and sets)
-                    const dateMatch = Math.abs(remoteEntry.date - localEntry.date) < 60000; // Within 1 minute
-                    const setsMatch = JSON.stringify(remoteEntry.sets || []) === JSON.stringify(localEntry.sets || []);
-                    return dateMatch && setsMatch;
-                });
-
-                if (!existsInRemote) {
-                    mergedLogEntries.push(localEntry);
+            for (const remoteEntry of existingData.logEntries) {
+                const remoteTask = existingData.tasks?.find(t => t.id === remoteEntry.taskId);
+                if (remoteTask) {
+                    const hash = this.createEntryHash(remoteEntry, remoteTask.name);
+                    entryHashMap.set(hash, remoteEntry);
                 }
             }
-        } else {
-            // No existing data, export all local entries
-            mergedLogEntries = localLogEntries;
         }
+        
+        // Then, add local entries that don't exist remotely
+        for (const localEntry of localLogEntries) {
+            const task = allTasks.find(t => t.id === localEntry.taskId);
+            if (!task) continue;
+
+            const hash = this.createEntryHash(localEntry, task.name);
+            
+            // Check if entry with this hash already exists
+            if (!entryHashMap.has(hash)) {
+                entryHashMap.set(hash, localEntry);
+            } else {
+                // Entry exists, but verify it's truly a duplicate (defensive check)
+                const existingEntry = entryHashMap.get(hash);
+                const existingTask = existingData?.tasks?.find(t => t.id === existingEntry.taskId);
+                if (existingTask && !this.areEntriesDuplicate(localEntry, existingEntry, task.name, existingTask.name)) {
+                    // Not a duplicate, add it (shouldn't happen with good hash, but safety check)
+                    entryHashMap.set(hash + '_' + Date.now(), localEntry);
+                }
+            }
+        }
+        
+        // Convert map values back to array
+        mergedLogEntries = Array.from(entryHashMap.values());
 
         // Get all videos (limit size for GitHub)
         const videos = await this.exportVideos();
@@ -223,6 +228,94 @@ class GitHubSync {
         // Videos are now stored with tasks (videoUrl field)
         // This function is kept for backward compatibility but returns empty array
         return [];
+    }
+
+    // Create a content-based hash for a log entry (professional deduplication approach)
+    createEntryHash(entry, taskName) {
+        // Normalize the entry data
+        const normalizedSets = Array.isArray(entry.sets) 
+            ? [...entry.sets]
+                .sort((a, b) => {
+                    // Sort by weight first, then reps for consistency
+                    if (a.weightKg !== b.weightKg) return a.weightKg - b.weightKg;
+                    return a.reps - b.reps;
+                })
+                .map(s => ({
+                    reps: Number(s.reps) || 0,
+                    weightKg: Number(s.weightKg) || 0
+                }))
+            : [];
+        
+        // Normalize date to day precision (ignore time for comparison)
+        const dateNormalized = new Date(entry.date);
+        dateNormalized.setHours(0, 0, 0, 0);
+        const dateKey = dateNormalized.getTime();
+        
+        // Create a deterministic string representation
+        const contentString = JSON.stringify({
+            taskName: (taskName || '').toLowerCase().trim(),
+            date: dateKey,
+            sets: normalizedSets
+        });
+        
+        // Simple hash function (for better performance than full JSON comparison)
+        let hash = 0;
+        for (let i = 0; i < contentString.length; i++) {
+            const char = contentString.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        
+        return hash.toString(36) + '_' + contentString.length;
+    }
+
+    // Check if two entries are duplicates (professional comparison)
+    areEntriesDuplicate(entry1, entry2, taskName1, taskName2) {
+        // Task names must match (case-insensitive)
+        if (taskName1.toLowerCase().trim() !== taskName2.toLowerCase().trim()) {
+            return false;
+        }
+        
+        // Normalize dates to day precision
+        const date1 = new Date(entry1.date);
+        date1.setHours(0, 0, 0, 0);
+        const date2 = new Date(entry2.date);
+        date2.setHours(0, 0, 0, 0);
+        
+        if (date1.getTime() !== date2.getTime()) {
+            return false;
+        }
+        
+        // Normalize and compare sets
+        const normalizeSets = (sets) => {
+            if (!Array.isArray(sets)) return [];
+            return [...sets]
+                .sort((a, b) => {
+                    if (a.weightKg !== b.weightKg) return a.weightKg - b.weightKg;
+                    return a.reps - b.reps;
+                })
+                .map(s => ({
+                    reps: Number(s.reps) || 0,
+                    weightKg: Number(s.weightKg) || 0
+                }));
+        };
+        
+        const sets1 = normalizeSets(entry1.sets);
+        const sets2 = normalizeSets(entry2.sets);
+        
+        if (sets1.length !== sets2.length) {
+            return false;
+        }
+        
+        // Compare each set
+        for (let i = 0; i < sets1.length; i++) {
+            if (sets1[i].reps !== sets2[i].reps || 
+                Math.abs(sets1[i].weightKg - sets2[i].weightKg) > 0.01) {
+                return false;
+            }
+        }
+        
+        return true;
     }
 
     // Import data into IndexedDB
@@ -357,23 +450,27 @@ class GitHubSync {
                 }
             }
 
-            // Import log entries - match by task name and date, avoid duplicates
+            // Import log entries - professional deduplication using content-based hashing
             if (data.logEntries && data.logEntries.length > 0) {
-                // Get all local tasks and entries once
+                // Get all local tasks and entries
                 const allLocalTasks = await db.getAllTasks();
-                const allLocalEntries = [];
+                
+                // Build a hash map of existing local entries for O(1) lookup
+                const existingEntryHashes = new Set();
+                const localEntriesByTask = new Map(); // taskId -> entries[]
+                
                 for (const task of allLocalTasks) {
                     const entries = await db.getLogEntriesByTask(task.id);
-                    allLocalEntries.push(...entries.map(e => ({ ...e, taskName: task.name.toLowerCase() })));
+                    localEntriesByTask.set(task.id, entries);
+                    
+                    // Create hashes for all existing entries
+                    for (const entry of entries) {
+                        const hash = this.createEntryHash(entry, task.name);
+                        existingEntryHashes.add(hash);
+                    }
                 }
 
-                // Create a set of entry signatures for fast duplicate checking
-                const existingEntrySignatures = new Set();
-                allLocalEntries.forEach(e => {
-                    const signature = `${e.taskName}|${e.date}|${JSON.stringify(e.sets || [])}`;
-                    existingEntrySignatures.add(signature);
-                });
-
+                // Process remote entries
                 for (const entry of data.logEntries) {
                     // Find the task this entry belongs to
                     const dataTask = data.tasks?.find(t => t.id === entry.taskId);
@@ -392,12 +489,23 @@ class GitHubSync {
                         continue;
                     }
 
-                    // Create signature for this entry
-                    const entrySignature = `${matchingTask.name.toLowerCase()}|${entry.date}|${JSON.stringify(entry.sets || [])}`;
+                    // Create hash for this entry
+                    const entryHash = this.createEntryHash(entry, matchingTask.name);
                     
-                    // Check if entry already exists using signature
-                    if (existingEntrySignatures.has(entrySignature)) {
+                    // Check if entry already exists using hash
+                    if (existingEntryHashes.has(entryHash)) {
                         // Duplicate entry, skip it
+                        continue;
+                    }
+
+                    // Additional defensive check: compare with actual entries (in case hash collision)
+                    const localEntries = localEntriesByTask.get(matchingTask.id) || [];
+                    const isDuplicate = localEntries.some(localEntry => 
+                        this.areEntriesDuplicate(entry, localEntry, matchingTask.name, matchingTask.name)
+                    );
+                    
+                    if (isDuplicate) {
+                        // Found duplicate via comparison, skip it
                         continue;
                     }
 
@@ -409,8 +517,12 @@ class GitHubSync {
                     await db.insertLogEntry(newEntry);
                     importedCount.logEntries++;
                     
-                    // Add to signatures set to prevent duplicates in same import batch
-                    existingEntrySignatures.add(entrySignature);
+                    // Add to hash set to prevent duplicates in same import batch
+                    existingEntryHashes.add(entryHash);
+                    
+                    // Update local entries cache
+                    localEntries.push(newEntry);
+                    localEntriesByTask.set(matchingTask.id, localEntries);
                 }
             }
 
