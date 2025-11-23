@@ -913,7 +913,7 @@ async function saveTask() {
         await db.insertTask(task);
         await db.addToSyncQueue('create', 'task', task);
         await autoSync();
-        navigate('edit');
+        navigate('manage-tasks');
     } catch (error) {
         console.error('Error saving task:', error);
         alert('Failed to save task. Please try again.');
