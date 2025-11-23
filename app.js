@@ -1,5 +1,5 @@
 // App State
-let currentMuscleGroupId = null;
+let currentWorkoutId = null;
 let currentTaskIndex = 0;
 let taskStates = {};
 let isOrderMode = false;
@@ -30,35 +30,35 @@ async function init() {
     // DO NOT auto-sync on startup - causes infinite loop
     // User must manually sync if they want to download from GitHub
     
-    await initializeDefaultMuscleGroups();
+    await initializeDefaultWorkouts();
     updateSyncStatus();
     checkSyncNeeded();
     showHomeScreen();
 }
 
-// Initialize default muscle groups
-async function initializeDefaultMuscleGroups() {
-    const existingGroups = await db.getAllMuscleGroups();
-    if (existingGroups.length === 0) {
-        const defaultGroups = [
-            { name: 'Chest', orderIndex: 0 },
-            { name: 'Back', orderIndex: 1 },
-            { name: 'Shoulders', orderIndex: 2 },
-            { name: 'Arms', orderIndex: 3 },
-            { name: 'Legs', orderIndex: 4 },
-            { name: 'Core', orderIndex: 5 },
-            { name: 'Cardio', orderIndex: 6 },
-            { name: 'Full Body', orderIndex: 7 }
+// Initialize default workouts
+async function initializeDefaultWorkouts() {
+    const existingWorkouts = await db.getAllWorkouts();
+    if (existingWorkouts.length === 0) {
+        const defaultWorkouts = [
+            { name: 'Chest', orderIndex: 0, taskIds: [] },
+            { name: 'Back', orderIndex: 1, taskIds: [] },
+            { name: 'Shoulders', orderIndex: 2, taskIds: [] },
+            { name: 'Arms', orderIndex: 3, taskIds: [] },
+            { name: 'Legs', orderIndex: 4, taskIds: [] },
+            { name: 'Core', orderIndex: 5, taskIds: [] },
+            { name: 'Cardio', orderIndex: 6, taskIds: [] },
+            { name: 'Full Body', orderIndex: 7, taskIds: [] }
         ];
-        for (const group of defaultGroups) {
-            await db.insertMuscleGroup(group);
+        for (const workout of defaultWorkouts) {
+            await db.insertWorkout(workout);
         }
     } else {
-        // Ensure all existing groups have orderIndex
-        for (const group of existingGroups) {
-            if (group.orderIndex === undefined) {
-                group.orderIndex = existingGroups.indexOf(group);
-                await db.updateMuscleGroup(group);
+        // Ensure all existing workouts have orderIndex
+        for (const workout of existingWorkouts) {
+            if (workout.orderIndex === undefined) {
+                workout.orderIndex = existingWorkouts.indexOf(workout);
+                await db.updateWorkout(workout);
             }
         }
     }
@@ -94,7 +94,7 @@ function navigate(screen) {
             showEditTaskScreen();
             break;
         case 'manage-muscle-groups':
-            showManageMuscleGroupsScreen();
+            showManageWorkoutsScreen();
             break;
     }
 }
@@ -104,12 +104,12 @@ async function showHomeScreen() {
     const screen = document.getElementById('home-screen');
     screen.classList.add('active');
     
-    const muscleGroups = await db.getAllMuscleGroups();
+    const workouts = await db.getAllWorkouts();
     const grid = document.getElementById('muscle-groups-grid');
     grid.innerHTML = '';
     
-    for (const group of muscleGroups) {
-        const lastWorkoutDate = await db.getLastWorkoutDateForMuscleGroup(group.id);
+    for (const workout of workouts) {
+        const lastWorkoutDate = await db.getLastWorkoutDateForWorkout(workout.id);
         const lastWorkoutText = lastWorkoutDate 
             ? `Last: ${formatDate(lastWorkoutDate)}`
             : 'No workouts yet';
@@ -117,11 +117,11 @@ async function showHomeScreen() {
         const card = document.createElement('div');
         card.className = 'muscle-group-card';
         card.onclick = () => {
-            currentMuscleGroupId = group.id;
+            currentWorkoutId = workout.id;
             navigate('detail');
         };
         card.innerHTML = `
-            <h2>${group.name}</h2>
+            <h2>${workout.name}</h2>
             <p>${lastWorkoutText}</p>
         `;
         grid.appendChild(card);
@@ -130,18 +130,18 @@ async function showHomeScreen() {
     checkSyncNeeded();
 }
 
-// Muscle Group Management
-function showAddMuscleGroupDialog() {
+// Workout Management
+function showAddWorkoutDialog() {
     document.getElementById('add-muscle-group-dialog').style.display = 'flex';
     document.getElementById('new-muscle-group-name').value = '';
     document.getElementById('new-muscle-group-name').focus();
 }
 
-function closeAddMuscleGroupDialog() {
+function closeAddWorkoutDialog() {
     document.getElementById('add-muscle-group-dialog').style.display = 'none';
 }
 
-async function saveNewMuscleGroup() {
+async function saveNewWorkout() {
     const nameInput = document.getElementById('new-muscle-group-name');
     if (!nameInput) {
         alert('Error: Input field not found');
@@ -170,22 +170,22 @@ async function saveNewMuscleGroup() {
             throw new Error('Database not initialized. Please refresh the page.');
         }
         
-        // Insert the muscle group
-        console.log('Calling insertMuscleGroup...');
-        const newId = await db.insertMuscleGroup({ name });
-        console.log('Muscle group inserted with ID:', newId);
+        // Insert the workout
+        console.log('Calling insertWorkout...');
+        const newId = await db.insertWorkout({ name, taskIds: [] });
+        console.log('Workout inserted with ID:', newId);
         
         if (!newId) {
             throw new Error('Failed to get ID from insert operation');
         }
         
-        // Get the inserted group to add to sync queue
-        const insertedGroup = await db.getMuscleGroupById(newId);
-        console.log('Retrieved inserted group:', insertedGroup);
+        // Get the inserted workout to add to sync queue
+        const insertedWorkout = await db.getWorkoutById(newId);
+        console.log('Retrieved inserted workout:', insertedWorkout);
         
-        if (insertedGroup) {
+        if (insertedWorkout) {
             try {
-                await db.addToSyncQueue('create', 'muscleGroup', insertedGroup);
+                await db.addToSyncQueue('create', 'workout', insertedWorkout);
             } catch (queueError) {
                 console.warn('Failed to add to sync queue:', queueError);
             }
@@ -199,17 +199,17 @@ async function saveNewMuscleGroup() {
         }
         
         // Close dialog
-        closeAddMuscleGroupDialog();
+        closeAddWorkoutDialog();
         
         // Refresh list
-        console.log('Refreshing muscle groups list...');
-        await loadMuscleGroupsList();
+        console.log('Refreshing workouts list...');
+        await loadWorkoutsList();
         
         // Show success feedback
         console.log('Workout added successfully!');
         
     } catch (error) {
-        console.error('Error saving muscle group:', error);
+        console.error('Error saving workout:', error);
         console.error('Error stack:', error.stack);
         alert('Failed to save workout: ' + (error.message || 'Unknown error') + '\n\nCheck browser console (F12) for details.');
     } finally {
@@ -221,119 +221,119 @@ async function saveNewMuscleGroup() {
     }
 }
 
-let isMuscleGroupOrderMode = false;
-let muscleGroupToEdit = null;
-let muscleGroupToDelete = null;
+let isWorkoutOrderMode = false;
+let workoutToEdit = null;
+let workoutToDelete = null;
 
-async function showManageMuscleGroups() {
+async function showManageWorkouts() {
     navigate('manage-muscle-groups');
 }
 
-async function showManageMuscleGroupsScreen() {
+async function showManageWorkoutsScreen() {
     const screen = document.getElementById('manage-muscle-groups-screen');
     screen.classList.add('active');
     
-    isMuscleGroupOrderMode = false;
+    isWorkoutOrderMode = false;
     const orderToggle = document.getElementById('muscle-group-order-toggle');
     if (orderToggle) {
         orderToggle.textContent = 'ORDER';
     }
-    await loadMuscleGroupsList();
+    await loadWorkoutsList();
 }
 
-function toggleMuscleGroupOrderMode() {
-    isMuscleGroupOrderMode = !isMuscleGroupOrderMode;
+function toggleWorkoutOrderMode() {
+    isWorkoutOrderMode = !isWorkoutOrderMode;
     const orderToggle = document.getElementById('muscle-group-order-toggle');
     if (orderToggle) {
-        orderToggle.textContent = isMuscleGroupOrderMode ? 'DONE' : 'ORDER';
+        orderToggle.textContent = isWorkoutOrderMode ? 'DONE' : 'ORDER';
     }
-    loadMuscleGroupsList();
+    loadWorkoutsList();
 }
 
-async function loadMuscleGroupsList() {
-    const muscleGroups = await db.getAllMuscleGroups();
+async function loadWorkoutsList() {
+    const workouts = await db.getAllWorkouts();
     const list = document.getElementById('muscle-groups-list');
     list.innerHTML = '';
     
-    muscleGroups.forEach((group, index) => {
+    workouts.forEach((workout, index) => {
         const item = document.createElement('div');
-        item.className = `task-item ${isMuscleGroupOrderMode ? 'order-mode' : ''}`;
+        item.className = `task-item ${isWorkoutOrderMode ? 'order-mode' : ''}`;
         item.innerHTML = `
-            ${isMuscleGroupOrderMode ? `
+            ${isWorkoutOrderMode ? `
                 <div class="task-order-controls">
-                    <button onclick="moveMuscleGroupUp(${index})" ${index === 0 ? 'disabled' : ''}>↑</button>
-                    <button onclick="moveMuscleGroupDown(${index})" ${index === muscleGroups.length - 1 ? 'disabled' : ''}>↓</button>
+                    <button onclick="moveWorkoutUp(${index})" ${index === 0 ? 'disabled' : ''}>↑</button>
+                    <button onclick="moveWorkoutDown(${index})" ${index === workouts.length - 1 ? 'disabled' : ''}>↓</button>
                 </div>
             ` : ''}
-            <div class="task-name" onclick="editMuscleGroup(${group.id})" style="cursor: pointer; flex: 1;">${group.name}</div>
-            <button class="delete-button-icon" onclick="showDeleteMuscleGroupDialog(${group.id})">🗑️</button>
+            <div class="task-name" onclick="editWorkout(${workout.id})" style="cursor: pointer; flex: 1;">${workout.name}</div>
+            <button class="delete-button-icon" onclick="showDeleteWorkoutDialog(${workout.id})">🗑️</button>
         `;
         list.appendChild(item);
     });
 }
 
-async function editMuscleGroup(id) {
-    if (isMuscleGroupOrderMode) return;
+async function editWorkout(id) {
+    if (isWorkoutOrderMode) return;
     
-    muscleGroupToEdit = id;
-    const group = await db.getMuscleGroupById(id);
-    const newName = prompt('Enter new name:', group.name);
-    if (newName && newName.trim() && newName.trim() !== group.name) {
-        group.name = newName.trim();
-        await db.updateMuscleGroup(group);
-        await db.addToSyncQueue('update', 'muscleGroup', group);
+    workoutToEdit = id;
+    const workout = await db.getWorkoutById(id);
+    const newName = prompt('Enter new name:', workout.name);
+    if (newName && newName.trim() && newName.trim() !== workout.name) {
+        workout.name = newName.trim();
+        await db.updateWorkout(workout);
+        await db.addToSyncQueue('update', 'workout', workout);
         await autoSync();
-        await loadMuscleGroupsList();
+        await loadWorkoutsList();
     }
 }
 
-function showDeleteMuscleGroupDialog(id) {
-    muscleGroupToDelete = id;
-    if (confirm('Are you sure you want to delete this workout? All exercises and history will also be deleted.')) {
-        confirmDeleteMuscleGroup();
+function showDeleteWorkoutDialog(id) {
+    workoutToDelete = id;
+    if (confirm('Are you sure you want to delete this workout? The tasks in this workout will not be deleted, only the workout grouping will be removed.')) {
+        confirmDeleteWorkout();
     }
 }
 
-async function confirmDeleteMuscleGroup() {
-    if (muscleGroupToDelete) {
-        const group = await db.getMuscleGroupById(muscleGroupToDelete);
-        await db.deleteMuscleGroup(muscleGroupToDelete);
-        await db.addToSyncQueue('delete', 'muscleGroup', group);
+async function confirmDeleteWorkout() {
+    if (workoutToDelete) {
+        const workout = await db.getWorkoutById(workoutToDelete);
+        await db.deleteWorkout(workoutToDelete);
+        await db.addToSyncQueue('delete', 'workout', workout);
         await autoSync();
-        muscleGroupToDelete = null;
-        await loadMuscleGroupsList();
+        workoutToDelete = null;
+        await loadWorkoutsList();
     }
 }
 
-async function moveMuscleGroupUp(index) {
-    const groups = await db.getAllMuscleGroups();
+async function moveWorkoutUp(index) {
+    const workouts = await db.getAllWorkouts();
     if (index > 0) {
-        const temp = groups[index].orderIndex;
-        groups[index].orderIndex = groups[index - 1].orderIndex;
-        groups[index - 1].orderIndex = temp;
+        const temp = workouts[index].orderIndex;
+        workouts[index].orderIndex = workouts[index - 1].orderIndex;
+        workouts[index - 1].orderIndex = temp;
         
-        await db.updateMuscleGroup(groups[index]);
-        await db.updateMuscleGroup(groups[index - 1]);
-        await db.addToSyncQueue('update', 'muscleGroup', groups[index]);
-        await db.addToSyncQueue('update', 'muscleGroup', groups[index - 1]);
+        await db.updateWorkout(workouts[index]);
+        await db.updateWorkout(workouts[index - 1]);
+        await db.addToSyncQueue('update', 'workout', workouts[index]);
+        await db.addToSyncQueue('update', 'workout', workouts[index - 1]);
         await autoSync();
-        await loadMuscleGroupsList();
+        await loadWorkoutsList();
     }
 }
 
-async function moveMuscleGroupDown(index) {
-    const groups = await db.getAllMuscleGroups();
-    if (index < groups.length - 1) {
-        const temp = groups[index].orderIndex;
-        groups[index].orderIndex = groups[index + 1].orderIndex;
-        groups[index + 1].orderIndex = temp;
+async function moveWorkoutDown(index) {
+    const workouts = await db.getAllWorkouts();
+    if (index < workouts.length - 1) {
+        const temp = workouts[index].orderIndex;
+        workouts[index].orderIndex = workouts[index + 1].orderIndex;
+        workouts[index + 1].orderIndex = temp;
         
-        await db.updateMuscleGroup(groups[index]);
-        await db.updateMuscleGroup(groups[index + 1]);
-        await db.addToSyncQueue('update', 'muscleGroup', groups[index]);
-        await db.addToSyncQueue('update', 'muscleGroup', groups[index + 1]);
+        await db.updateWorkout(workouts[index]);
+        await db.updateWorkout(workouts[index + 1]);
+        await db.addToSyncQueue('update', 'workout', workouts[index]);
+        await db.addToSyncQueue('update', 'workout', workouts[index + 1]);
         await autoSync();
-        await loadMuscleGroupsList();
+        await loadWorkoutsList();
     }
 }
 
@@ -342,10 +342,10 @@ async function showDetailScreen() {
     const screen = document.getElementById('detail-screen');
     screen.classList.add('active');
     
-    const muscleGroup = await db.getMuscleGroupById(currentMuscleGroupId);
-    document.getElementById('detail-title').textContent = muscleGroup.name;
+    const workout = await db.getWorkoutById(currentWorkoutId);
+    document.getElementById('detail-title').textContent = workout.name;
     
-    const tasks = await db.getTasksByMuscleGroup(currentMuscleGroupId);
+    const tasks = await db.getTasksByWorkout(currentWorkoutId);
     const startButton = document.getElementById('start-button');
     const emptyMessage = document.getElementById('empty-routine-message');
     
@@ -360,7 +360,7 @@ async function showDetailScreen() {
 
 async function startWorkout() {
     // Check if workout already completed today
-    const isCompleted = await db.isWorkoutCompletedToday(currentMuscleGroupId);
+    const isCompleted = await db.isWorkoutCompletedToday(currentWorkoutId);
     if (isCompleted) {
         if (confirm('You have already completed this workout today. Do you want to start it again anyway?')) {
             navigate('workout');
@@ -370,7 +370,7 @@ async function startWorkout() {
     }
 }
 
-// Edit Screen
+// Edit Screen - Now manages workout's task selection
 async function showEditScreen() {
     const screen = document.getElementById('edit-screen');
     screen.classList.add('active');
@@ -378,11 +378,12 @@ async function showEditScreen() {
     isOrderMode = false;
     document.getElementById('order-toggle').textContent = 'ORDER';
     
-    await loadTasksList();
+    await loadWorkoutTasksList();
 }
 
-async function loadTasksList() {
-    const tasks = await db.getTasksByMuscleGroup(currentMuscleGroupId);
+async function loadWorkoutTasksList() {
+    const workout = await db.getWorkoutById(currentWorkoutId);
+    const tasks = await db.getTasksByWorkout(currentWorkoutId);
     const list = document.getElementById('tasks-list');
     list.innerHTML = '';
     
@@ -392,12 +393,12 @@ async function loadTasksList() {
         item.innerHTML = `
             ${isOrderMode ? `
                 <div class="task-order-controls">
-                    <button onclick="moveTaskUp(${index})" ${index === 0 ? 'disabled' : ''}>↑</button>
-                    <button onclick="moveTaskDown(${index})" ${index === tasks.length - 1 ? 'disabled' : ''}>↓</button>
+                    <button onclick="moveWorkoutTaskUp(${index})" ${index === 0 ? 'disabled' : ''}>↑</button>
+                    <button onclick="moveWorkoutTaskDown(${index})" ${index === tasks.length - 1 ? 'disabled' : ''}>↓</button>
                 </div>
             ` : ''}
             <div class="task-name" onclick="editTask(${task.id})" style="cursor: pointer; flex: 1;">${task.name}</div>
-            <button class="delete-button-icon" onclick="showDeleteDialog(${task.id})">🗑️</button>
+            <button class="delete-button-icon" onclick="removeTaskFromWorkout(${task.id})">🗑️</button>
         `;
         list.appendChild(item);
     });
@@ -406,42 +407,135 @@ async function loadTasksList() {
 function toggleOrderMode() {
     isOrderMode = !isOrderMode;
     document.getElementById('order-toggle').textContent = isOrderMode ? 'DONE' : 'ORDER';
-    loadTasksList();
+    loadWorkoutTasksList();
+}
+
+async function moveWorkoutTaskUp(index) {
+    const workout = await db.getWorkoutById(currentWorkoutId);
+    if (!workout || !workout.taskIds || index === 0) return;
+    
+    const taskIds = [...workout.taskIds];
+    [taskIds[index], taskIds[index - 1]] = [taskIds[index - 1], taskIds[index]];
+    workout.taskIds = taskIds;
+    
+    await db.updateWorkout(workout);
+    await db.addToSyncQueue('update', 'workout', workout);
+    await loadWorkoutTasksList();
+    await autoSync();
+}
+
+async function moveWorkoutTaskDown(index) {
+    const workout = await db.getWorkoutById(currentWorkoutId);
+    if (!workout || !workout.taskIds || index >= workout.taskIds.length - 1) return;
+    
+    const taskIds = [...workout.taskIds];
+    [taskIds[index], taskIds[index + 1]] = [taskIds[index + 1], taskIds[index]];
+    workout.taskIds = taskIds;
+    
+    await db.updateWorkout(workout);
+    await db.addToSyncQueue('update', 'workout', workout);
+    await loadWorkoutTasksList();
+    await autoSync();
+}
+
+async function removeTaskFromWorkout(taskId) {
+    if (!confirm('Remove this task from this workout? The task itself will not be deleted.')) {
+        return;
+    }
+    
+    const workout = await db.getWorkoutById(currentWorkoutId);
+    if (workout && workout.taskIds) {
+        workout.taskIds = workout.taskIds.filter(id => id !== taskId);
+        await db.updateWorkout(workout);
+        await db.addToSyncQueue('update', 'workout', workout);
+        await loadWorkoutTasksList();
+        await autoSync();
+    }
+}
+
+// Tasks Management Screen
+let isTaskOrderMode = false;
+
+async function showManageTasksScreen() {
+    navigate('manage-tasks');
+}
+
+async function showManageTasksScreenContent() {
+    const screen = document.getElementById('manage-tasks-screen');
+    screen.classList.add('active');
+    
+    isTaskOrderMode = false;
+    const orderToggle = document.getElementById('task-order-toggle');
+    if (orderToggle) {
+        orderToggle.textContent = 'ORDER';
+    }
+    await loadAllTasksList();
+}
+
+function toggleTaskOrderMode() {
+    isTaskOrderMode = !isTaskOrderMode;
+    const orderToggle = document.getElementById('task-order-toggle');
+    if (orderToggle) {
+        orderToggle.textContent = isTaskOrderMode ? 'DONE' : 'ORDER';
+    }
+    loadAllTasksList();
+}
+
+async function loadAllTasksList() {
+    const allTasks = await db.getAllTasks();
+    const list = document.getElementById('all-tasks-list');
+    list.innerHTML = '';
+    
+    allTasks.forEach((task, index) => {
+        const item = document.createElement('div');
+        item.className = `task-item ${isTaskOrderMode ? 'order-mode' : ''}`;
+        item.innerHTML = `
+            ${isTaskOrderMode ? `
+                <div class="task-order-controls">
+                    <button onclick="moveTaskUp(${index})" ${index === 0 ? 'disabled' : ''}>↑</button>
+                    <button onclick="moveTaskDown(${index})" ${index === allTasks.length - 1 ? 'disabled' : ''}>↓</button>
+                </div>
+            ` : ''}
+            <div class="task-name" onclick="editTask(${task.id})" style="cursor: pointer; flex: 1;">${task.name}</div>
+            <button class="delete-button-icon" onclick="showDeleteTaskDialog(${task.id})">🗑️</button>
+        `;
+        list.appendChild(item);
+    });
 }
 
 async function moveTaskUp(index) {
-    const tasks = await db.getTasksByMuscleGroup(currentMuscleGroupId);
+    const allTasks = await db.getAllTasks();
     if (index > 0) {
-        const temp = tasks[index].orderIndex;
-        tasks[index].orderIndex = tasks[index - 1].orderIndex;
-        tasks[index - 1].orderIndex = temp;
+        const temp = allTasks[index].orderIndex;
+        allTasks[index].orderIndex = allTasks[index - 1].orderIndex;
+        allTasks[index - 1].orderIndex = temp;
         
-        await db.updateTask(tasks[index]);
-        await db.updateTask(tasks[index - 1]);
-        await db.addToSyncQueue('update', 'task', tasks[index]);
-        await db.addToSyncQueue('update', 'task', tasks[index - 1]);
-        await loadTasksList();
+        await db.updateTask(allTasks[index]);
+        await db.updateTask(allTasks[index - 1]);
+        await db.addToSyncQueue('update', 'task', allTasks[index]);
+        await db.addToSyncQueue('update', 'task', allTasks[index - 1]);
+        await loadAllTasksList();
         await autoSync();
     }
 }
 
 async function moveTaskDown(index) {
-    const tasks = await db.getTasksByMuscleGroup(currentMuscleGroupId);
-    if (index < tasks.length - 1) {
-        const temp = tasks[index].orderIndex;
-        tasks[index].orderIndex = tasks[index + 1].orderIndex;
-        tasks[index + 1].orderIndex = temp;
+    const allTasks = await db.getAllTasks();
+    if (index < allTasks.length - 1) {
+        const temp = allTasks[index].orderIndex;
+        allTasks[index].orderIndex = allTasks[index + 1].orderIndex;
+        allTasks[index + 1].orderIndex = temp;
         
-        await db.updateTask(tasks[index]);
-        await db.updateTask(tasks[index + 1]);
-        await db.addToSyncQueue('update', 'task', tasks[index]);
-        await db.addToSyncQueue('update', 'task', tasks[index + 1]);
-        await loadTasksList();
+        await db.updateTask(allTasks[index]);
+        await db.updateTask(allTasks[index + 1]);
+        await db.addToSyncQueue('update', 'task', allTasks[index]);
+        await db.addToSyncQueue('update', 'task', allTasks[index + 1]);
+        await loadAllTasksList();
         await autoSync();
     }
 }
 
-function showDeleteDialog(taskId) {
+function showDeleteTaskDialog(taskId) {
     taskToDelete = taskId;
     document.getElementById('delete-dialog').style.display = 'flex';
 }
@@ -457,7 +551,14 @@ async function confirmDelete() {
         await db.deleteTask(taskToDelete);
         await db.addToSyncQueue('delete', 'task', task);
         closeDeleteDialog();
-        await loadTasksList();
+        
+        // Refresh the appropriate list based on current screen
+        const currentScreen = document.querySelector('.screen.active');
+        if (currentScreen && currentScreen.id === 'manage-tasks-screen') {
+            await loadAllTasksList();
+        } else if (currentScreen && currentScreen.id === 'edit-screen') {
+            await loadWorkoutTasksList();
+        }
         await autoSync();
     }
 }
@@ -474,6 +575,15 @@ function showAddTaskScreen() {
     document.getElementById('task-video').value = '';
     
     updateStepDisplay();
+}
+
+// Update back button navigation for add task screen
+function getAddTaskBackScreen() {
+    const currentScreen = document.querySelector('.screen.active');
+    if (currentScreen && currentScreen.id === 'manage-tasks-screen') {
+        return 'manage-tasks';
+    }
+    return 'edit';
 }
 
 function updateStepDisplay() {
@@ -530,8 +640,8 @@ async function saveTask() {
     }
     
     try {
-        const tasks = await db.getTasksByMuscleGroup(currentMuscleGroupId);
-        const orderIndex = tasks.length;
+        const allTasks = await db.getAllTasks();
+        const orderIndex = allTasks.length;
         
         let videoFileName = null;
         
@@ -544,7 +654,6 @@ async function saveTask() {
         }
         
         const task = {
-            muscleGroupId: currentMuscleGroupId,
             name: taskName,
             instructions: instructions,
             tips: tips,
@@ -578,9 +687,9 @@ async function showWorkoutScreen() {
     const screen = document.getElementById('workout-screen');
     screen.classList.add('active');
     
-    const tasks = await db.getTasksByMuscleGroup(currentMuscleGroupId);
+    const tasks = await db.getTasksByWorkout(currentWorkoutId);
     if (tasks.length === 0) {
-        alert('No tasks available. Please add tasks first.');
+        alert('No tasks available. Please add tasks to this workout first.');
         navigate('detail');
         return;
     }
@@ -1116,7 +1225,7 @@ async function showHistoryScreen() {
     const screen = document.getElementById('history-screen');
     screen.classList.add('active');
     
-    const tasks = await db.getTasksByMuscleGroup(currentMuscleGroupId);
+    const tasks = await db.getTasksByWorkout(currentWorkoutId);
     const list = document.getElementById('history-list');
     list.innerHTML = '';
     
@@ -1552,18 +1661,14 @@ async function showSyncScreen() {
         
         // Show local data count
         try {
-            const groups = await db.getAllMuscleGroups();
-            let taskCount = 0;
+            const workouts = await db.getAllWorkouts();
+            const allTasks = await db.getAllTasks();
             let logCount = 0;
-            for (const group of groups) {
-                const tasks = await db.getTasksByMuscleGroup(group.id);
-                taskCount += tasks.length;
-                for (const task of tasks) {
-                    const entries = await db.getLogEntriesByTask(task.id);
-                    logCount += entries.length;
-                }
+            for (const task of allTasks) {
+                const entries = await db.getLogEntriesByTask(task.id);
+                logCount += entries.length;
             }
-            const dataInfo = `Local data: ${groups.length} groups, ${taskCount} exercises, ${logCount} workout logs`;
+            const dataInfo = `Local data: ${workouts.length} workouts, ${allTasks.length} exercises, ${logCount} workout logs`;
             if (!statusInfo.textContent.includes('Local data')) {
                 statusInfo.textContent += ` | ${dataInfo}`;
             }
@@ -1660,7 +1765,7 @@ async function syncFromGitHub() {
             const currentScreen = document.querySelector('.screen.active');
             if (currentScreen && currentScreen.id === 'home-screen') {
                 await showHomeScreen();
-            } else if (currentMuscleGroupId) {
+            } else if (currentWorkoutId) {
                 await showDetailScreen();
             } else {
                 await showHomeScreen();
@@ -1738,14 +1843,14 @@ async function confirmDatabaseWipe() {
         closeDatabaseWipeDialog();
         
         // Reset app state
-        currentMuscleGroupId = null;
+        currentWorkoutId = null;
         currentTaskIndex = 0;
         taskStates = {};
         
         alert('Workout history cleared successfully! Your workouts and exercises have been preserved.');
         
         // Refresh the UI to show updated history
-        if (currentMuscleGroupId) {
+        if (currentWorkoutId) {
             await showDetailScreen();
         } else {
             navigate('home');
@@ -1771,16 +1876,10 @@ async function exportDatabase(event) {
         console.log('Starting database export...');
         
         // Get all data from database
-        const muscleGroups = await db.getAllMuscleGroups();
-        const allTasks = [];
+        const workouts = await db.getAllWorkouts();
+        const allTasks = await db.getAllTasks();
         const allLogEntries = [];
         const allVideos = [];
-        
-        // Get all tasks
-        for (const group of muscleGroups) {
-            const tasks = await db.getTasksByMuscleGroup(group.id);
-            allTasks.push(...tasks);
-        }
         
         // Get all log entries
         for (const task of allTasks) {
@@ -1797,10 +1896,10 @@ async function exportDatabase(event) {
         
         // Create export object
         const exportData = {
-            version: 2,
+            version: 3,
             exportDate: new Date().toISOString(),
             exportTimestamp: Date.now(),
-            muscleGroups,
+            workouts,
             tasks: allTasks,
             logEntries: allLogEntries,
             videos: allVideos,

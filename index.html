@@ -16,8 +16,9 @@
                 <button class="text-button" onclick="navigate('sync')" id="sync-status-button">⚙️ Sync</button>
             </div>
         </header>
-        <div style="padding: 8px 16px;">
-            <button class="outlined-button" onclick="showManageMuscleGroups()" style="width: 100%;">Manage Workouts</button>
+        <div style="padding: 8px 16px; display: flex; gap: 8px;">
+            <button class="outlined-button" onclick="showManageWorkouts()" style="flex: 1;">Manage Workouts</button>
+            <button class="outlined-button" onclick="showManageTasksScreen()" style="flex: 1;">Manage Tasks</button>
         </div>
         <div id="muscle-groups-grid" class="muscle-groups-grid">
             <!-- Muscle groups will be dynamically inserted here -->
@@ -116,14 +117,29 @@
     <div id="edit-screen" class="screen">
         <header class="app-header">
             <button class="back-button" onclick="navigate('detail')">← Back</button>
-            <h1>Edit Routine</h1>
+            <h1>Edit Workout</h1>
             <button class="text-button" id="order-toggle" onclick="toggleOrderMode()">ORDER</button>
         </header>
         <div class="edit-content">
-            <div id="tasks-list" class="tasks-list">
-                <!-- Tasks will be dynamically inserted here -->
+            <div style="padding: 8px 16px;">
+                <button class="outlined-button" onclick="showAddTaskToWorkoutDialog()" style="width: 100%; margin-bottom: 16px;">+ Add Task to Workout</button>
             </div>
-            <button class="fab" onclick="navigate('add-task')" title="Add Task">+</button>
+            <div id="tasks-list" class="tasks-list">
+                <!-- Tasks in this workout will be dynamically inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Task to Workout Dialog -->
+    <div id="add-task-to-workout-dialog" class="dialog-overlay" style="display: none;">
+        <div class="dialog" style="max-width: 500px; max-height: 70vh; overflow-y: auto;">
+            <h3>Select Tasks to Add</h3>
+            <div id="available-tasks-list" style="max-height: 400px; overflow-y: auto;">
+                <!-- Available tasks will be inserted here -->
+            </div>
+            <div class="dialog-buttons">
+                <button class="outlined-button" onclick="closeAddTaskToWorkoutDialog()">Cancel</button>
+            </div>
         </div>
     </div>
 
@@ -257,8 +273,8 @@
                    style="width: 100%; padding: 12px; margin: 16px 0; border: 2px solid var(--border-color); border-radius: 8px; font-size: 16px;"
                    onkeypress="if(event.key === 'Enter') saveNewMuscleGroup()" />
             <div class="dialog-buttons">
-                <button class="outlined-button" onclick="closeAddMuscleGroupDialog()">Cancel</button>
-                <button class="primary-button" onclick="saveNewMuscleGroup()" id="add-workout-button">Add</button>
+                <button class="outlined-button" onclick="closeAddWorkoutDialog()">Cancel</button>
+                <button class="primary-button" onclick="saveNewWorkout()" id="add-workout-button">Add</button>
             </div>
         </div>
     </div>
@@ -268,14 +284,31 @@
         <header class="app-header">
             <button class="back-button" onclick="navigate('home')">← Back</button>
             <h1>Manage Workouts</h1>
-            <button class="text-button" id="muscle-group-order-toggle" onclick="toggleMuscleGroupOrderMode()">ORDER</button>
+            <button class="text-button" id="muscle-group-order-toggle" onclick="toggleWorkoutOrderMode()">ORDER</button>
         </header>
         <div class="edit-content">
             <div style="padding: 8px 16px;">
-                <button class="outlined-button" onclick="showAddMuscleGroupDialog()" style="width: 100%; margin-bottom: 16px;">+ Add Workout</button>
+                <button class="outlined-button" onclick="showAddWorkoutDialog()" style="width: 100%; margin-bottom: 16px;">+ Add Workout</button>
             </div>
             <div id="muscle-groups-list" class="tasks-list">
-                <!-- Muscle groups will be dynamically inserted here -->
+                <!-- Workouts will be dynamically inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Manage Tasks Screen -->
+    <div id="manage-tasks-screen" class="screen">
+        <header class="app-header">
+            <button class="back-button" onclick="navigate('home')">← Back</button>
+            <h1>Manage Tasks</h1>
+            <button class="text-button" id="task-order-toggle" onclick="toggleTaskOrderMode()">ORDER</button>
+        </header>
+        <div class="edit-content">
+            <div style="padding: 8px 16px;">
+                <button class="outlined-button" onclick="showAddTaskScreen()" style="width: 100%; margin-bottom: 16px;">+ Add Task</button>
+            </div>
+            <div id="all-tasks-list" class="tasks-list">
+                <!-- All tasks will be dynamically inserted here -->
             </div>
         </div>
     </div>

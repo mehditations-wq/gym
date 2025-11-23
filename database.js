@@ -3,7 +3,7 @@ class GymDatabase {
     constructor() {
         this.db = null;
         this.dbName = 'GymTrackerDB';
-        this.dbVersion = 2; // Increment version for new stores
+        this.dbVersion = 3; // Increment version for new stores and migration
     }
 
     async init() {
@@ -11,8 +11,16 @@ class GymDatabase {
             const request = indexedDB.open(this.dbName, this.dbVersion);
 
             request.onerror = () => reject(request.error);
-            request.onsuccess = () => {
+            request.onsuccess = async () => {
                 this.db = request.result;
+                
+                // Check if migration is needed
+                const oldVersion = parseInt(localStorage.getItem('db_version') || '0');
+                if (oldVersion < 3 && oldVersion > 0) {
+                    await this.migrateToVersion3();
+                }
+                localStorage.setItem('db_version', '3');
+                
                 resolve();
             };
 
@@ -20,16 +28,29 @@ class GymDatabase {
                 const db = event.target.result;
                 const oldVersion = event.oldVersion || 0;
 
-                // Muscle Groups store
+                // Muscle Groups store (kept for backward compatibility during migration)
                 if (!db.objectStoreNames.contains('muscleGroups')) {
                     const muscleGroupStore = db.createObjectStore('muscleGroups', { keyPath: 'id', autoIncrement: true });
                     muscleGroupStore.createIndex('name', 'name', { unique: false });
+                }
+
+                // Workouts store (new in version 3)
+                if (!db.objectStoreNames.contains('workouts')) {
+                    const workoutStore = db.createObjectStore('workouts', { keyPath: 'id', autoIncrement: true });
+                    workoutStore.createIndex('name', 'name', { unique: false });
                 }
 
                 // Tasks store
                 if (!db.objectStoreNames.contains('tasks')) {
                     const taskStore = db.createObjectStore('tasks', { keyPath: 'id', autoIncrement: true });
                     taskStore.createIndex('muscleGroupId', 'muscleGroupId', { unique: false });
+                } else if (oldVersion < 3) {
+                    // Remove muscleGroupId index in version 3
+                    const transaction = event.target.transaction;
+                    const taskStore = transaction.objectStore('tasks');
+                    if (taskStore.indexNames.contains('muscleGroupId')) {
+                        taskStore.deleteIndex('muscleGroupId');
+                    }
                 }
 
                 // Log Entries store
@@ -64,7 +85,63 @@ class GymDatabase {
         return deviceId;
     }
 
-    // Muscle Groups
+    // Migration from version 2 to 3: Convert muscle groups to workouts, make tasks independent
+    async migrateToVersion3() {
+        console.log('Starting migration to version 3...');
+        
+        try {
+            // Get all muscle groups
+            const muscleGroups = await this.getAllMuscleGroups();
+            
+            // Get all tasks (still have muscleGroupId)
+            const allTasks = await this.getAllTasks();
+            
+            // Group tasks by muscleGroupId
+            const tasksByGroup = {};
+            for (const task of allTasks) {
+                if (task.muscleGroupId) {
+                    if (!tasksByGroup[task.muscleGroupId]) {
+                        tasksByGroup[task.muscleGroupId] = [];
+                    }
+                    tasksByGroup[task.muscleGroupId].push(task);
+                }
+            }
+            
+            // Create workouts from muscle groups
+            for (const group of muscleGroups) {
+                const taskIds = tasksByGroup[group.id] 
+                    ? tasksByGroup[group.id]
+                        .sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0))
+                        .map(t => t.id)
+                    : [];
+                
+                const workout = {
+                    name: group.name,
+                    taskIds: taskIds,
+                    orderIndex: group.orderIndex || 0,
+                    lastModified: group.lastModified || Date.now(),
+                    deviceId: group.deviceId || this.getDeviceId()
+                };
+                
+                await this.insertWorkout(workout);
+            }
+            
+            // Remove muscleGroupId from all tasks
+            for (const task of allTasks) {
+                if (task.muscleGroupId) {
+                    delete task.muscleGroupId;
+                    await this.updateTask(task);
+                }
+            }
+            
+            console.log('Migration to version 3 completed successfully');
+        } catch (error) {
+            console.error('Migration error:', error);
+            throw error;
+        }
+    }
+
+    // Muscle Groups (kept for backward compatibility, will be deprecated)
     async getAllMuscleGroups() {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['muscleGroups'], 'readonly');
@@ -239,6 +316,21 @@ class GymDatabase {
         });
     }
 
+    async getAllTasks() {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['tasks'], 'readonly');
+            const store = transaction.objectStore('tasks');
+            const request = store.getAll();
+
+            request.onsuccess = () => {
+                const tasks = request.result || [];
+                tasks.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                resolve(tasks);
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
+
     async insertTask(task) {
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction(['tasks'], 'readwrite');
@@ -288,6 +380,139 @@ class GymDatabase {
             request.onsuccess = () => resolve();
             request.onerror = () => reject(request.error);
         });
+    }
+
+    // Workouts (new structure in version 3)
+    async getAllWorkouts() {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['workouts'], 'readonly');
+            const store = transaction.objectStore('workouts');
+            const request = store.getAll();
+
+            request.onsuccess = () => {
+                const workouts = request.result || [];
+                workouts.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+                resolve(workouts);
+            };
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async getWorkoutById(id) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['workouts'], 'readonly');
+            const store = transaction.objectStore('workouts');
+            const request = store.get(id);
+
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async insertWorkout(workout) {
+        if (!this.db) {
+            throw new Error('Database not initialized');
+        }
+        
+        // Add metadata
+        workout.lastModified = Date.now();
+        workout.deviceId = this.getDeviceId();
+        
+        // Ensure taskIds is an array
+        if (!workout.taskIds) {
+            workout.taskIds = [];
+        }
+        
+        // Get orderIndex if not provided
+        if (workout.orderIndex === undefined || workout.orderIndex === null) {
+            try {
+                const count = await this.getWorkoutCount();
+                workout.orderIndex = count;
+            } catch (error) {
+                console.warn('Failed to get count, using 0:', error);
+                workout.orderIndex = 0;
+            }
+        }
+        
+        return new Promise((resolve, reject) => {
+            try {
+                const transaction = this.db.transaction(['workouts'], 'readwrite');
+                const store = transaction.objectStore('workouts');
+                const request = store.add(workout);
+                
+                request.onsuccess = () => {
+                    console.log('Workout inserted, ID:', request.result);
+                    resolve(request.result);
+                };
+                request.onerror = () => {
+                    console.error('Insert error:', request.error);
+                    reject(request.error);
+                };
+            } catch (error) {
+                console.error('Error creating transaction:', error);
+                reject(error);
+            }
+        });
+    }
+
+    async updateWorkout(workout) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['workouts'], 'readwrite');
+            const store = transaction.objectStore('workouts');
+            
+            workout.lastModified = Date.now();
+            workout.deviceId = this.getDeviceId();
+            
+            // Ensure taskIds is an array
+            if (!workout.taskIds) {
+                workout.taskIds = [];
+            }
+            
+            const request = store.put(workout);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async deleteWorkout(id) {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['workouts'], 'readwrite');
+            const store = transaction.objectStore('workouts');
+            const request = store.delete(id);
+            
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    async getWorkoutCount() {
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction(['workouts'], 'readonly');
+            const store = transaction.objectStore('workouts');
+            const request = store.count();
+            
+            request.onsuccess = () => resolve(request.result || 0);
+            request.onerror = () => reject(request.error);
+        });
+    }
+
+    // Get tasks for a workout (by taskIds array)
+    async getTasksByWorkout(workoutId) {
+        const workout = await this.getWorkoutById(workoutId);
+        if (!workout || !workout.taskIds || workout.taskIds.length === 0) {
+            return [];
+        }
+        
+        const allTasks = await this.getAllTasks();
+        const taskMap = {};
+        allTasks.forEach(task => {
+            taskMap[task.id] = task;
+        });
+        
+        // Return tasks in the order specified by taskIds array
+        return workout.taskIds
+            .map(id => taskMap[id])
+            .filter(task => task !== undefined);
     }
 
     // Log Entries
@@ -405,10 +630,10 @@ class GymDatabase {
     }
 
     // Check if workout completed today for a muscle group
-    async isWorkoutCompletedToday(muscleGroupId) {
+    async isWorkoutCompletedToday(workoutId) {
         return new Promise(async (resolve, reject) => {
             try {
-                const tasks = await this.getTasksByMuscleGroup(muscleGroupId);
+                const tasks = await this.getTasksByWorkout(workoutId);
                 if (tasks.length === 0) {
                     resolve(false);
                     return;
@@ -437,10 +662,10 @@ class GymDatabase {
         });
     }
 
-    async getLastWorkoutDateForMuscleGroup(muscleGroupId) {
+    async getLastWorkoutDateForWorkout(workoutId) {
         return new Promise(async (resolve, reject) => {
             try {
-                const tasks = await this.getTasksByMuscleGroup(muscleGroupId);
+                const tasks = await this.getTasksByWorkout(workoutId);
                 let latestDate = null;
 
                 for (const task of tasks) {

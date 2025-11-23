@@ -147,16 +147,10 @@ class GitHubSync {
 
     // Export all data from IndexedDB
     async exportData() {
-        const muscleGroups = await db.getAllMuscleGroups();
-        const allTasks = [];
+        const workouts = await db.getAllWorkouts();
+        const allTasks = await db.getAllTasks();
         const allLogEntries = [];
         const allVideos = [];
-
-        // Get all tasks
-        for (const group of muscleGroups) {
-            const tasks = await db.getTasksByMuscleGroup(group.id);
-            allTasks.push(...tasks);
-        }
 
         // Get all log entries
         for (const task of allTasks) {
@@ -169,11 +163,11 @@ class GitHubSync {
         allVideos.push(...videos);
 
         return {
-            muscleGroups,
+            workouts,
             tasks: allTasks,
             logEntries: allLogEntries,
             videos: allVideos,
-            version: 1,
+            version: 3,
             lastSync: Date.now()
         };
     }
@@ -190,94 +184,90 @@ class GitHubSync {
     async importData(data) {
         try {
             let importedCount = {
-                muscleGroups: 0,
+                workouts: 0,
                 tasks: 0,
                 logEntries: 0
             };
 
-            // Import muscle groups - merge by name if ID doesn't match
-            if (data.muscleGroups && data.muscleGroups.length > 0) {
-                const existingGroups = await db.getAllMuscleGroups();
-                const existingGroupNames = new Set(existingGroups.map(g => g.name.toLowerCase()));
-                
+            const isOldFormat = data.version < 3 || (data.muscleGroups && !data.workouts);
+
+            // Handle old format (version 1 or 2) - convert muscle groups to workouts
+            if (isOldFormat && data.muscleGroups) {
+                // Convert old format to new format
+                const workouts = [];
                 for (const group of data.muscleGroups) {
-                    const existingById = await db.getMuscleGroupById(group.id);
-                    const existingByName = existingGroups.find(g => g.name.toLowerCase() === group.name.toLowerCase());
+                    const taskIds = data.tasks
+                        ?.filter(t => t.muscleGroupId === group.id)
+                        .map(t => t.id) || [];
+                    workouts.push({
+                        ...group,
+                        taskIds: taskIds
+                    });
+                }
+                data.workouts = workouts;
+            }
+
+            // Import workouts - merge by name if ID doesn't match
+            if (data.workouts && data.workouts.length > 0) {
+                const existingWorkouts = await db.getAllWorkouts();
+                const existingWorkoutNames = new Set(existingWorkouts.map(w => w.name.toLowerCase()));
+                
+                for (const workout of data.workouts) {
+                    const existingById = await db.getWorkoutById(workout.id);
+                    const existingByName = existingWorkouts.find(w => w.name.toLowerCase() === workout.name.toLowerCase());
                     
                     if (existingById) {
-                        // Update existing group (preserve orderIndex if newer)
-                        if (group.lastModified && (!existingById.lastModified || group.lastModified > existingById.lastModified)) {
-                            existingById.name = group.name;
-                            existingById.orderIndex = group.orderIndex !== undefined ? group.orderIndex : existingById.orderIndex;
-                            await db.updateMuscleGroup(existingById);
-                            importedCount.muscleGroups++;
+                        // Update existing workout (preserve orderIndex if newer)
+                        if (workout.lastModified && (!existingById.lastModified || workout.lastModified > existingById.lastModified)) {
+                            existingById.name = workout.name;
+                            existingById.orderIndex = workout.orderIndex !== undefined ? workout.orderIndex : existingById.orderIndex;
+                            existingById.taskIds = workout.taskIds || [];
+                            await db.updateWorkout(existingById);
+                            importedCount.workouts++;
                         }
                     } else if (!existingByName) {
-                        // New group, insert it
-                        await db.insertMuscleGroup({ 
-                            name: group.name,
-                            orderIndex: group.orderIndex
+                        // New workout, insert it
+                        await db.insertWorkout({ 
+                            name: workout.name,
+                            orderIndex: workout.orderIndex,
+                            taskIds: workout.taskIds || []
                         });
-                        importedCount.muscleGroups++;
+                        importedCount.workouts++;
                     }
                 }
             }
 
-            // Import tasks - match by muscleGroupId and name, update or insert
+            // Import tasks - independent, match by name
             if (data.tasks && data.tasks.length > 0) {
-                const allLocalTasks = [];
-                const allLocalGroups = await db.getAllMuscleGroups();
-                for (const group of allLocalGroups) {
-                    const tasks = await db.getTasksByMuscleGroup(group.id);
-                    allLocalTasks.push(...tasks);
-                }
+                const allLocalTasks = await db.getAllTasks();
 
                 for (const task of data.tasks) {
-                    // Find matching muscle group by name
-                    const localGroups = await db.getAllMuscleGroups();
-                    const matchingGroup = localGroups.find(g => {
-                        // Try to find by ID first, then by name
-                        const dataGroup = data.muscleGroups?.find(dg => dg.id === task.muscleGroupId);
-                        if (dataGroup) {
-                            return g.id === task.muscleGroupId || g.name.toLowerCase() === dataGroup.name.toLowerCase();
-                        }
-                        return false;
-                    });
+                    // Remove muscleGroupId if present (old format)
+                    const taskData = { ...task };
+                    delete taskData.muscleGroupId;
 
-                    if (!matchingGroup) {
-                        console.warn(`Could not find matching muscle group for task: ${task.name}`);
-                        continue;
-                    }
-
-                    // Check if task exists by ID or by name in the same muscle group
+                    // Check if task exists by ID or by name
                     const existingById = await db.getTaskById(task.id);
                     const existingByName = allLocalTasks.find(t => 
-                        t.muscleGroupId === matchingGroup.id && 
                         t.name.toLowerCase() === task.name.toLowerCase()
                     );
 
                     if (existingById) {
                         // Update existing task
-                        task.muscleGroupId = matchingGroup.id;
-                        await db.updateTask(task);
+                        Object.assign(existingById, taskData);
+                        delete existingById.id; // Don't update ID
+                        await db.updateTask(existingById);
                         importedCount.tasks++;
                     } else if (existingByName) {
                         // Update by name match
-                        existingByName.name = task.name;
-                        existingByName.instructions = task.instructions;
-                        existingByName.tips = task.tips;
-                        existingByName.videoFileName = task.videoFileName;
-                        existingByName.videoUrl = task.videoUrl; // Include Firebase URL
-                        existingByName.defaultSets = task.defaultSets || 3;
-                        existingByName.defaultReps = task.defaultReps || 10;
-                        existingByName.orderIndex = task.orderIndex;
+                        Object.assign(existingByName, taskData);
+                        delete existingByName.id; // Don't update ID
                         await db.updateTask(existingByName);
                         importedCount.tasks++;
                     } else {
-                        // New task, insert with correct muscleGroupId
+                        // New task, insert it
                         const newTask = {
-                            ...task,
-                            muscleGroupId: matchingGroup.id,
+                            ...taskData,
                             id: undefined // Let database generate new ID
                         };
                         await db.insertTask(newTask);
@@ -288,12 +278,7 @@ class GitHubSync {
 
             // Import log entries - match by task name and date
             if (data.logEntries && data.logEntries.length > 0) {
-                const allLocalTasks = [];
-                const allLocalGroups = await db.getAllMuscleGroups();
-                for (const group of allLocalGroups) {
-                    const tasks = await db.getTasksByMuscleGroup(group.id);
-                    allLocalTasks.push(...tasks);
-                }
+                const allLocalTasks = await db.getAllTasks();
 
                 for (const entry of data.logEntries) {
                     // Find the task this entry belongs to
@@ -314,9 +299,7 @@ class GitHubSync {
                     const existingEntries = await db.getLogEntriesByTask(matchingTask.id);
                     const duplicate = existingEntries.find(e => 
                         Math.abs(e.date - entry.date) < 60000 && // Within 1 minute
-                        e.sets === entry.sets &&
-                        e.reps === entry.reps &&
-                        Math.abs(e.weightKg - entry.weightKg) < 0.01
+                        JSON.stringify(e.sets) === JSON.stringify(entry.sets)
                     );
                     
                     if (!duplicate) {
