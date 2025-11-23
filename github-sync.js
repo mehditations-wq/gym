@@ -145,17 +145,62 @@ class GitHubSync {
         }
     }
 
-    // Export all data from IndexedDB
+    // Export all data from IndexedDB, merging with existing GitHub data
     async exportData() {
         const workouts = await db.getAllWorkouts();
         const allTasks = await db.getAllTasks();
-        const allLogEntries = [];
         const allVideos = [];
 
-        // Get all log entries
+        // Get existing data from GitHub to merge
+        let existingData = null;
+        try {
+            if (this.gistId) {
+                existingData = await this.loadGist();
+            }
+        } catch (error) {
+            console.log('Could not load existing GitHub data (first upload?):', error.message);
+        }
+
+        // Get all local log entries
+        const localLogEntries = [];
         for (const task of allTasks) {
             const entries = await db.getLogEntriesByTask(task.id);
-            allLogEntries.push(...entries);
+            localLogEntries.push(...entries);
+        }
+
+        // Merge log entries: combine existing remote entries with new local entries
+        let mergedLogEntries = [];
+        if (existingData && existingData.logEntries) {
+            // Start with existing remote entries
+            mergedLogEntries = [...existingData.logEntries];
+            
+            // Add local entries that don't exist remotely
+            for (const localEntry of localLogEntries) {
+                // Find the task for this entry
+                const task = allTasks.find(t => t.id === localEntry.taskId);
+                if (!task) continue;
+
+                // Check if this entry exists in remote data
+                const existsInRemote = existingData.logEntries.some(remoteEntry => {
+                    // Find the remote task by name
+                    const remoteTask = existingData.tasks?.find(t => t.id === remoteEntry.taskId);
+                    if (!remoteTask || remoteTask.name.toLowerCase() !== task.name.toLowerCase()) {
+                        return false;
+                    }
+                    
+                    // Check if entry matches (same date and sets)
+                    const dateMatch = Math.abs(remoteEntry.date - localEntry.date) < 60000; // Within 1 minute
+                    const setsMatch = JSON.stringify(remoteEntry.sets || []) === JSON.stringify(localEntry.sets || []);
+                    return dateMatch && setsMatch;
+                });
+
+                if (!existsInRemote) {
+                    mergedLogEntries.push(localEntry);
+                }
+            }
+        } else {
+            // No existing data, export all local entries
+            mergedLogEntries = localLogEntries;
         }
 
         // Get all videos (limit size for GitHub)
@@ -165,7 +210,7 @@ class GitHubSync {
         return {
             workouts,
             tasks: allTasks,
-            logEntries: allLogEntries,
+            logEntries: mergedLogEntries,
             videos: allVideos,
             version: 3,
             lastSync: Date.now()
@@ -239,51 +284,103 @@ class GitHubSync {
 
             // Import tasks - independent, match by name
             if (data.tasks && data.tasks.length > 0) {
-                const allLocalTasks = await db.getAllTasks();
+                // Get all local tasks once at the start
+                let allLocalTasks = await db.getAllTasks();
+                const processedTaskNames = new Set(); // Track processed task names to avoid duplicates in same batch
 
                 for (const task of data.tasks) {
                     // Remove muscleGroupId if present (old format)
                     const taskData = { ...task };
                     delete taskData.muscleGroupId;
+                    const taskNameLower = task.name.toLowerCase();
 
-                    // Check if task exists by ID or by name
-                    const existingById = await db.getTaskById(task.id);
-                    const existingByName = allLocalTasks.find(t => 
-                        t.name.toLowerCase() === task.name.toLowerCase()
-                    );
+                    // Skip if we've already processed a task with this name in this import batch
+                    if (processedTaskNames.has(taskNameLower)) {
+                        console.log(`Skipping duplicate task in import batch: ${task.name}`);
+                        continue;
+                    }
 
-                    if (existingById) {
-                        // Update existing task
-                        Object.assign(existingById, taskData);
-                        delete existingById.id; // Don't update ID
-                        await db.updateTask(existingById);
-                        importedCount.tasks++;
-                    } else if (existingByName) {
-                        // Update by name match
-                        Object.assign(existingByName, taskData);
-                        delete existingByName.id; // Don't update ID
-                        await db.updateTask(existingByName);
-                        importedCount.tasks++;
+                    // Check if task exists by ID first
+                    let existingTask = null;
+                    if (task.id) {
+                        existingTask = await db.getTaskById(task.id);
+                    }
+
+                    // If not found by ID, check by name (refresh list to catch any newly added tasks)
+                    if (!existingTask) {
+                        allLocalTasks = await db.getAllTasks(); // Refresh to catch any tasks added during import
+                        existingTask = allLocalTasks.find(t => 
+                            t.name.toLowerCase() === taskNameLower
+                        );
+                    }
+
+                    if (existingTask) {
+                        // Update existing task - only update if imported data is newer
+                        if (task.lastModified && (!existingTask.lastModified || task.lastModified > existingTask.lastModified)) {
+                            // Preserve the existing ID
+                            const existingId = existingTask.id;
+                            Object.assign(existingTask, taskData);
+                            existingTask.id = existingId; // Ensure ID is preserved
+                            await db.updateTask(existingTask);
+                            importedCount.tasks++;
+                            processedTaskNames.add(taskNameLower);
+                        } else {
+                            // Data is not newer, skip update but mark as processed
+                            processedTaskNames.add(taskNameLower);
+                        }
                     } else {
                         // New task, insert it
-                        const newTask = {
-                            ...taskData,
-                            id: undefined // Let database generate new ID
-                        };
-                        await db.insertTask(newTask);
-                        importedCount.tasks++;
+                        // Double-check it doesn't exist by name (one more time to be safe)
+                        allLocalTasks = await db.getAllTasks();
+                        const finalCheck = allLocalTasks.find(t => 
+                            t.name.toLowerCase() === taskNameLower
+                        );
+                        
+                        if (!finalCheck) {
+                            const newTask = {
+                                ...taskData,
+                                id: undefined // Let database generate new ID
+                            };
+                            await db.insertTask(newTask);
+                            importedCount.tasks++;
+                            processedTaskNames.add(taskNameLower);
+                        } else {
+                            // Found it in final check, update it instead
+                            const existingId = finalCheck.id;
+                            Object.assign(finalCheck, taskData);
+                            finalCheck.id = existingId;
+                            await db.updateTask(finalCheck);
+                            importedCount.tasks++;
+                            processedTaskNames.add(taskNameLower);
+                        }
                     }
                 }
             }
 
-            // Import log entries - match by task name and date
+            // Import log entries - match by task name and date, avoid duplicates
             if (data.logEntries && data.logEntries.length > 0) {
+                // Get all local tasks and entries once
                 const allLocalTasks = await db.getAllTasks();
+                const allLocalEntries = [];
+                for (const task of allLocalTasks) {
+                    const entries = await db.getLogEntriesByTask(task.id);
+                    allLocalEntries.push(...entries.map(e => ({ ...e, taskName: task.name.toLowerCase() })));
+                }
+
+                // Create a set of entry signatures for fast duplicate checking
+                const existingEntrySignatures = new Set();
+                allLocalEntries.forEach(e => {
+                    const signature = `${e.taskName}|${e.date}|${JSON.stringify(e.sets || [])}`;
+                    existingEntrySignatures.add(signature);
+                });
 
                 for (const entry of data.logEntries) {
                     // Find the task this entry belongs to
                     const dataTask = data.tasks?.find(t => t.id === entry.taskId);
-                    if (!dataTask) continue;
+                    if (!dataTask) {
+                        console.warn(`Could not find task for log entry with taskId: ${entry.taskId}`);
+                        continue;
+                    }
 
                     // Find matching local task by name
                     const matchingTask = allLocalTasks.find(t => 
@@ -291,25 +388,29 @@ class GitHubSync {
                     );
 
                     if (!matchingTask) {
-                        console.warn(`Could not find matching task for log entry: ${dataTask.name}`);
+                        console.warn(`Could not find matching local task for log entry: ${dataTask.name}`);
                         continue;
                     }
 
-                    // Check if entry already exists
-                    const existingEntries = await db.getLogEntriesByTask(matchingTask.id);
-                    const duplicate = existingEntries.find(e => 
-                        Math.abs(e.date - entry.date) < 60000 && // Within 1 minute
-                        JSON.stringify(e.sets) === JSON.stringify(entry.sets)
-                    );
+                    // Create signature for this entry
+                    const entrySignature = `${matchingTask.name.toLowerCase()}|${entry.date}|${JSON.stringify(entry.sets || [])}`;
                     
-                    if (!duplicate) {
-                        const newEntry = {
-                            ...entry,
-                            taskId: matchingTask.id
-                        };
-                        await db.insertLogEntry(newEntry);
-                        importedCount.logEntries++;
+                    // Check if entry already exists using signature
+                    if (existingEntrySignatures.has(entrySignature)) {
+                        // Duplicate entry, skip it
+                        continue;
                     }
+
+                    // Entry doesn't exist, add it
+                    const newEntry = {
+                        ...entry,
+                        taskId: matchingTask.id
+                    };
+                    await db.insertLogEntry(newEntry);
+                    importedCount.logEntries++;
+                    
+                    // Add to signatures set to prevent duplicates in same import batch
+                    existingEntrySignatures.add(entrySignature);
                 }
             }
 
