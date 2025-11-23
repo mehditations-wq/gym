@@ -129,18 +129,22 @@
         </div>
     </div>
 
-    <!-- Add Task to Workout Dialog -->
-    <div id="add-task-to-workout-dialog" class="dialog-overlay" style="display: none;">
-        <div class="dialog" style="max-width: 500px; max-height: 70vh; overflow-y: auto;">
-            <h3>Select Tasks to Add</h3>
-            <p style="margin: 8px 0 16px 0; color: var(--text-secondary); font-size: 14px;">Click on tasks to select them, then click "Add Tasks"</p>
-            <div id="available-tasks-list" style="max-height: 400px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px; padding: 8px;">
+    <!-- Add Task to Workout Screen (Full Screen Modal) -->
+    <div id="add-task-to-workout-screen" class="screen">
+        <header class="app-header">
+            <button class="back-button" onclick="closeAddTaskToWorkoutDialog()">← Back</button>
+            <h1>Add Tasks to Workout</h1>
+        </header>
+        <div class="edit-content" style="padding: 16px;">
+            <p style="margin-bottom: 16px; color: var(--text-secondary); font-size: 14px;">Tap on tasks to select them, then tap "Add Tasks"</p>
+            <div id="available-tasks-list" style="min-height: 300px;">
                 <!-- Available tasks will be inserted here -->
             </div>
-            <div class="dialog-buttons" style="margin-top: 16px;">
-                <button class="outlined-button" onclick="closeAddTaskToWorkoutDialog()">Cancel</button>
-                <button class="primary-button" id="add-selected-tasks-button" onclick="addSelectedTasksToWorkout()" disabled>Add Tasks</button>
+            <div style="position: fixed; bottom: 0; left: 0; right: 0; background: var(--background); padding: 16px; border-top: 2px solid var(--border-color); box-shadow: 0 -2px 10px rgba(0,0,0,0.1);">
+                <button class="outlined-button" onclick="closeAddTaskToWorkoutDialog()" style="width: 48%; margin-right: 4%;">Cancel</button>
+                <button class="primary-button" id="add-selected-tasks-button" onclick="addSelectedTasksToWorkout()" disabled style="width: 48%;">Add Tasks</button>
             </div>
+            <div style="height: 80px;"></div> <!-- Spacer for fixed button -->
         </div>
     </div>
 

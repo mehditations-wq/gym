@@ -468,12 +468,12 @@ async function showAddTaskToWorkoutDialog() {
         return;
     }
     
-    const dialog = document.getElementById('add-task-to-workout-dialog');
+    const screen = document.getElementById('add-task-to-workout-screen');
     const list = document.getElementById('available-tasks-list');
     
-    if (!dialog) {
-        console.error('add-task-to-workout-dialog element not found');
-        alert('Dialog element not found. Please refresh the page.');
+    if (!screen) {
+        console.error('add-task-to-workout-screen element not found');
+        alert('Screen element not found. Please refresh the page.');
         return;
     }
     
@@ -507,16 +507,19 @@ async function showAddTaskToWorkoutDialog() {
             availableTasks.forEach(task => {
                 const item = document.createElement('div');
                 item.className = 'task-item';
-                item.style.padding = '12px';
+                item.style.padding = '16px';
                 item.style.cursor = 'pointer';
                 item.style.borderBottom = '1px solid var(--border-color)';
+                item.style.minHeight = '60px';
+                item.style.display = 'flex';
+                item.style.alignItems = 'center';
                 item.onclick = () => toggleTaskSelection(task.id, item);
                 item.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 16px; width: 100%;">
                         <input type="checkbox" id="task-checkbox-${task.id}" 
                                onclick="event.stopPropagation(); toggleTaskSelection(${task.id}, this.parentElement.parentElement)"
-                               style="width: 20px; height: 20px; cursor: pointer;" />
-                        <div class="task-name" style="flex: 1;">${task.name}</div>
+                               style="width: 24px; height: 24px; cursor: pointer; flex-shrink: 0;" />
+                        <div class="task-name" style="flex: 1; font-size: 16px;">${task.name}</div>
                     </div>
                 `;
                 list.appendChild(item);
@@ -530,10 +533,11 @@ async function showAddTaskToWorkoutDialog() {
             addButton.textContent = 'Add Tasks';
         }
         
-        dialog.style.display = 'flex';
-        console.log('Dialog displayed successfully');
+        // Show the screen
+        screen.classList.add('active');
+        console.log('Screen displayed successfully');
     } catch (error) {
-        console.error('Error showing add task dialog:', error);
+        console.error('Error showing add task screen:', error);
         console.error('Error stack:', error.stack);
         alert('Error loading tasks: ' + error.message + '\n\nCheck browser console (F12) for details.');
     }
@@ -564,11 +568,13 @@ function toggleTaskSelection(taskId, element) {
 }
 
 function closeAddTaskToWorkoutDialog() {
-    const dialog = document.getElementById('add-task-to-workout-dialog');
-    if (dialog) {
-        dialog.style.display = 'none';
+    const screen = document.getElementById('add-task-to-workout-screen');
+    if (screen) {
+        screen.classList.remove('active');
     }
     selectedTaskIds = [];
+    // Navigate back to edit screen
+    navigate('edit');
 }
 
 async function addSelectedTasksToWorkout() {
@@ -619,6 +625,10 @@ async function addSelectedTasksToWorkout() {
         
         console.log('Tasks added successfully:', addedCount, 'tasks');
         closeAddTaskToWorkoutDialog();
+        // Show success message
+        if (addedCount > 0) {
+            // Brief visual feedback - the list will refresh automatically
+        }
     } catch (error) {
         console.error('Error adding tasks to workout:', error);
         console.error('Error stack:', error.stack);
