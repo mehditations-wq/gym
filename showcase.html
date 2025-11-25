@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gym Tracker - The Ultimate Workout Companion</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --dark: #0f172a;
+            --light: #f8fafc;
+            --accent: #8b5cf6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--dark);
+            color: var(--light);
+            overflow-x: hidden;
+            min-height: 100vh;
+        }
+
+        /* Animated Background */
+        .bg-animation {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: radial-gradient(circle at 50% 50%, #1e293b 0%, #0f172a 100%);
+            overflow: hidden;
+        }
+
+        .blob {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: linear-gradient(180deg, rgba(59, 130, 246, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+            border-radius: 50%;
+            filter: blur(80px);
+            animation: float 20s infinite ease-in-out;
+        }
+
+        .blob:nth-child(1) {
+            top: -100px;
+            left: -100px;
+            animation-delay: 0s;
+        }
+
+        .blob:nth-child(2) {
+            bottom: -100px;
+            right: -100px;
+            animation-delay: -5s;
+            background: linear-gradient(180deg, rgba(236, 72, 153, 0.2) 0%, rgba(139, 92, 246, 0.2) 100%);
+        }
+
+        @keyframes float {
+            0% {
+                transform: translate(0, 0) scale(1);
+            }
+
+            33% {
+                transform: translate(30px, -50px) scale(1.1);
+            }
+
+            66% {
+                transform: translate(-20px, 20px) scale(0.9);
+            }
+
+            100% {
+                transform: translate(0, 0) scale(1);
+            }
+        }
+
+        /* Layout */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            gap: 80px;
+            flex-wrap: wrap;
+        }
+
+        /* Text Content */
+        .content {
+            flex: 1;
+            min-width: 300px;
+            max-width: 600px;
+            z-index: 10;
+        }
+
+        h1 {
+            font-size: 4rem;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 24px;
+            background: linear-gradient(to right, #60a5fa, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.lead {
+            font-size: 1.25rem;
+            color: #94a3b8;
+            margin-bottom: 40px;
+            line-height: 1.6;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 24px;
+            margin-bottom: 40px;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .feature-icon {
+            font-size: 24px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .feature-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: white;
+        }
+
+        .feature-desc {
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        .btn {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            padding: 16px 32px;
+            border-radius: 50px;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 30px -10px rgba(59, 130, 246, 0.6);
+            background: #2563eb;
+        }
+
+        /* Phone Mockup */
+        .mockup-container {
+            position: relative;
+            z-index: 10;
+            perspective: 1000px;
+        }
+
+        .phone {
+            width: 360px;
+            height: 740px;
+            background: #000;
+            border-radius: 50px;
+            padding: 12px;
+            box-shadow:
+                0 0 0 2px #334155,
+                0 0 0 4px #1e293b,
+                0 50px 100px -20px rgba(0, 0, 0, 0.5);
+            position: relative;
+            transform: rotateY(-15deg) rotateX(5deg);
+            transition: transform 0.5s ease;
+        }
+
+        .mockup-container:hover .phone {
+            transform: rotateY(0) rotateX(0);
+        }
+
+        .notch {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 160px;
+            height: 32px;
+            background: #000;
+            border-bottom-left-radius: 20px;
+            border-bottom-right-radius: 20px;
+            z-index: 20;
+        }
+
+        .screen {
+            width: 100%;
+            height: 100%;
+            background: #fff;
+            border-radius: 38px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 900px) {
+            .container {
+                flex-direction: column;
+                text-align: center;
+                gap: 40px;
+            }
+
+            h1 {
+                font-size: 3rem;
+            }
+
+            .phone {
+                transform: none;
+                width: 320px;
+                height: 680px;
+            }
+
+            .features {
+                text-align: left;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="bg-animation">
+        <div class="blob"></div>
+        <div class="blob"></div>
+    </div>
+
+    <div class="container">
+        <div class="content">
+            <h1>Focus on your gains,<br>not the tracking.</h1>
+            <p class="lead">The privacy-first, offline-capable workout tracker that gets out of your way. No ads, no
+                subscriptions, just pure progress.</p>
+
+            <div class="features">
+                <div class="feature-card">
+                    <span class="feature-icon">⚡</span>
+                    <div class="feature-title">Offline First</div>
+                    <div class="feature-desc">Works anywhere, anytime. No internet required.</div>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">🔒</span>
+                    <div class="feature-title">Private</div>
+                    <div class="feature-desc">Your data lives on your device. We track nothing.</div>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">☁️</span>
+                    <div class="feature-title">Cloud Sync</div>
+                    <div class="feature-desc">Optional GitHub sync to keep devices in check.</div>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon">🎯</span>
+                    <div class="feature-title">Zero Friction</div>
+                    <div class="feature-desc">Designed for speed during your workout.</div>
+                </div>
+            </div>
+
+            <a href="index.html" class="btn">Launch App</a>
+        </div>
+
+        <div class="mockup-container">
+            <div class="phone">
+                <div class="notch"></div>
+                <div class="screen">
+                    <iframe src="index.html" title="App Preview"></iframe>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

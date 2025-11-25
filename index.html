@@ -1,385 +1,239 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gym Tracker</title>
     <link rel="stylesheet" href="styles.css">
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2196f3">
 </head>
+
 <body>
-    <!-- Home Screen -->
-    <div id="home-screen" class="screen active">
-        <header class="app-header">
-            <h1>Gym Tracker</h1>
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span id="sync-warning" style="display: none; color: orange; font-size: 20px;" title="Sync needed">⚠️</span>
-                <button class="text-button" onclick="navigate('sync')" id="sync-status-button">⚙️ Sync</button>
-            </div>
-        </header>
-        <div style="padding: 8px 16px; display: flex; gap: 8px;">
-            <button class="outlined-button" onclick="showManageWorkouts()" style="flex: 1;">Manage Workouts</button>
-            <button class="outlined-button" onclick="showManageTasksScreen()" style="flex: 1;">Manage Tasks</button>
-        </div>
-        <div id="muscle-groups-grid" class="muscle-groups-grid">
-            <!-- Muscle groups will be dynamically inserted here -->
-        </div>
-    </div>
-
-    <!-- GitHub Sync Screen -->
-    <div id="sync-screen" class="screen">
-        <header class="app-header">
-            <button class="back-button" onclick="navigate('home')">← Back</button>
-            <h1>GitHub Sync</h1>
-        </header>
-        <div class="sync-content">
-            <div id="sync-status" class="sync-status">
-                <p id="sync-status-text">Not connected to GitHub</p>
-            </div>
-            
-            <div id="sync-auth-section">
-                <h3>Connect to GitHub</h3>
-                <p class="help-text">Enter your GitHub Personal Access Token to sync your data across devices.</p>
-                <div class="sync-instructions">
-                    <p><strong>How to create a token:</strong></p>
-                    <ol>
-                        <li>Go to <a href="https://github.com/settings/tokens" target="_blank">GitHub Settings → Developer settings → Personal access tokens</a></li>
-                        <li>Click "Generate new token (classic)"</li>
-                        <li>Give it a name (e.g., "Gym Tracker")</li>
-                        <li>Select scope: <strong>gist</strong> (check the box)</li>
-                        <li>Click "Generate token"</li>
-                        <li>Copy the token and paste it below</li>
-                    </ol>
+    <div id="app">
+        <!-- Home Screen -->
+        <div id="home-screen" class="screen active">
+            <header class="app-header">
+                <h1>Gym Tracker</h1>
+                <div class="header-actions">
+                    <button id="btn-sync" class="icon-btn" aria-label="Sync">⚙️</button>
                 </div>
-                <input type="password" id="github-token-input" placeholder="Enter GitHub Personal Access Token" />
-                <button class="primary-button" onclick="connectGitHub()">Connect</button>
-            </div>
-
-            <div id="sync-controls-section" style="display: none;">
-                <h3>Sync Controls</h3>
-                <div class="sync-workflow">
-                    <p><strong>How to sync across devices:</strong></p>
-                    <ol style="text-align: left; margin: 16px 0;">
-                        <li><strong>First device:</strong> Click "Upload to GitHub" to save your data</li>
-                        <li><strong>Other devices:</strong> Use the same token, then click "Download from GitHub"</li>
-                        <li><strong>After changes:</strong> Data auto-syncs when you add/edit exercises or complete workouts</li>
-                    </ol>
+            </header>
+            <main class="content">
+                <div class="section-header">
+                    <h2>My Workouts</h2>
                 </div>
-                <button class="primary-button" onclick="syncToGitHub()">Upload to GitHub</button>
-                <button class="outlined-button" onclick="syncFromGitHub()">Download from GitHub</button>
-                <button class="outlined-button" onclick="disconnectGitHub()">Disconnect</button>
-                <p id="last-sync-time" class="help-text" style="font-weight: 500; margin-top: 16px;"></p>
-                <p id="sync-status-info" class="help-text" style="margin-top: 8px; font-size: 12px;"></p>
-                <div style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-color);">
-                    <h3>Video Storage</h3>
-                    <p class="help-text">Videos are stored locally on your device. They will not sync across devices, but all other data (exercises, workout history) will sync via GitHub.</p>
+                <div id="workouts-list" class="card-list">
+                    <!-- Workouts injected here -->
                 </div>
-            </div>
 
-            <div id="sync-info" class="sync-info">
-                <h3>About GitHub Sync</h3>
-                <ul>
-                    <li>Your data is stored in a private GitHub Gist</li>
-                    <li>Access your workouts from any device</li>
-                    <li>Data syncs automatically when you make changes</li>
-                    <li>Videos are stored locally (too large for GitHub)</li>
-                </ul>
-                <p style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
-                    <strong>Need help?</strong> See the <a href="SYNC_GUIDE.md" target="_blank" style="color: var(--primary-color);">complete sync guide</a> for detailed instructions.
-                </p>
-            </div>
-            
-            <div style="margin-top: 32px; padding-top: 24px; border-top: 2px solid var(--border-color);">
-                <h3>Database Settings</h3>
-                <p class="help-text">Backup or clear your database data.</p>
-                <button class="primary-button" onclick="exportDatabase()" style="width: 100%; margin-top: 16px;">Download Database Backup</button>
-                <button class="outlined-button" onclick="showDatabaseWipeDialog()" style="width: 100%; margin-top: 16px; background-color: var(--error-color); color: white; border-color: var(--error-color);">Clear Workout History</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Muscle Group Detail Screen -->
-    <div id="detail-screen" class="screen">
-        <header class="app-header">
-            <button class="back-button" onclick="navigate('home')">← Back</button>
-            <h1 id="detail-title">Muscle Group</h1>
-        </header>
-        <div class="detail-content">
-            <button id="start-button" class="primary-button" onclick="startWorkout()">START</button>
-            <p id="empty-routine-message" class="empty-message" style="display: none;">
-                This routine is empty. Please add tasks in the Edit screen.
-            </p>
-            <button class="outlined-button" onclick="navigate('edit')">EDIT</button>
-        </div>
-    </div>
-
-    <!-- Edit Screen -->
-    <div id="edit-screen" class="screen">
-        <header class="app-header">
-            <button class="back-button" onclick="navigate('detail')">← Back</button>
-            <h1>Edit Workout</h1>
-            <button class="text-button" id="order-toggle" onclick="toggleOrderMode()">ORDER</button>
-        </header>
-        <div class="edit-content">
-            <div style="padding: 8px 16px;">
-                <button class="outlined-button" onclick="showAddTaskToWorkoutDialog()" style="width: 100%; margin-bottom: 16px;">+ Add Task to Workout</button>
-            </div>
-            <div id="tasks-list" class="tasks-list">
-                <!-- Tasks in this workout will be dynamically inserted here -->
-            </div>
-        </div>
-    </div>
-
-    <!-- Add Task to Workout Screen (Full Screen Modal) -->
-    <div id="add-task-to-workout-screen" class="screen">
-        <header class="app-header">
-            <button class="back-button" onclick="closeAddTaskToWorkoutDialog()">← Back</button>
-            <h1>Add Tasks to Workout</h1>
-        </header>
-        <div class="edit-content" style="padding: 16px;">
-            <p style="margin-bottom: 16px; color: var(--text-secondary); font-size: 14px;">Tap on tasks to select them, then tap "Add Tasks"</p>
-            <div id="available-tasks-list" style="min-height: 300px;">
-                <!-- Available tasks will be inserted here -->
-            </div>
-            <div style="position: fixed; bottom: 0; left: 0; right: 0; background: var(--background); padding: 16px; border-top: 2px solid var(--border-color); box-shadow: 0 -2px 10px rgba(0,0,0,0.1);">
-                <button class="outlined-button" onclick="closeAddTaskToWorkoutDialog()" style="width: 48%; margin-right: 4%;">Cancel</button>
-                <button class="primary-button" id="add-selected-tasks-button" onclick="addSelectedTasksToWorkout()" disabled style="width: 48%;">Add Tasks</button>
-            </div>
-            <div style="height: 80px;"></div> <!-- Spacer for fixed button -->
-        </div>
-    </div>
-
-    <!-- Add Task Screen -->
-    <div id="add-task-screen" class="screen">
-        <header class="app-header">
-            <button class="back-button" onclick="navigate(getAddTaskBackScreen())">← Back</button>
-            <h1>Add Task</h1>
-        </header>
-        <div class="add-task-content">
-            <div id="step-1" class="step active">
-                <label>Task Name</label>
-                <input type="text" id="task-name" placeholder="Enter task name" />
-            </div>
-            <div id="step-2" class="step">
-                <label>Target Muscle</label>
-                <textarea id="task-tips" placeholder="Enter target muscle (optional)" rows="8"></textarea>
-            </div>
-            <div id="step-3" class="step">
-                <label>Instructions</label>
-                <textarea id="task-instructions" placeholder="Enter instructions (optional)" rows="8"></textarea>
-            </div>
-            <div id="step-4" class="step">
-                <label>Default Sets</label>
-                <input type="number" id="task-default-sets" placeholder="Default number of sets" min="1" value="3" />
-                <label style="margin-top: 16px;">Default Reps per Set</label>
-                <input type="number" id="task-default-reps" placeholder="Default reps per set" min="1" value="10" />
-            </div>
-            <div id="step-5" class="step">
-                <label>Video (Optional)</label>
-                <input type="file" id="task-video" accept="video/*" />
-                <p class="help-text">Select a video file to attach to this exercise</p>
-            </div>
-            <div class="step-navigation">
-                <button class="outlined-button" id="back-button" onclick="previousStep()" style="display: none;">Back</button>
-                <button class="primary-button" id="next-button" onclick="nextStep()">Next</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Workout Screen -->
-    <div id="workout-screen" class="screen">
-        <header class="app-header">
-            <button class="back-button" onclick="navigate('detail')">← Back</button>
-            <h1 id="workout-title">Workout</h1>
-            <button class="text-button" onclick="finishWorkout()" id="finish-workout-button">Finish</button>
-        </header>
-        <div class="workout-content">
-            <div id="workout-pager" class="workout-pager">
-                <!-- Task pages will be dynamically inserted here -->
-            </div>
-            <div class="workout-bottom-fixed">
-                <div id="workout-actions-container" class="workout-actions-container">
-                    <!-- Action buttons will be dynamically inserted here -->
+                <div class="action-buttons">
+                    <button id="btn-manage-workouts" class="btn secondary">Manage Workouts</button>
+                    <button id="btn-manage-tasks" class="btn secondary">Manage Tasks</button>
                 </div>
-                <div id="workout-progress" class="workout-progress">
-                    <!-- Progress indicators will be dynamically inserted here -->
+            </main>
+        </div>
+
+        <!-- Workout Detail Screen -->
+        <div id="detail-screen" class="screen">
+            <header class="app-header">
+                <button class="icon-btn back-btn" data-target="home">←</button>
+                <h1 id="detail-title">Workout Name</h1>
+                <button id="btn-edit-workout-tasks" class="icon-btn">EDIT</button>
+            </header>
+            <main class="content">
+                <div id="workout-tasks-list" class="card-list">
+                    <!-- Tasks injected here -->
                 </div>
-            </div>
+                <button id="btn-start-workout" class="btn primary large">START WORKOUT</button>
+            </main>
+        </div>
+
+        <!-- Active Workout Screen -->
+        <div id="active-workout-screen" class="screen">
+            <header class="app-header">
+                <button id="btn-quit-workout" class="icon-btn">✕</button>
+                <h1 id="active-workout-title">Workout in Progress</h1>
+                <div class="timer" id="workout-timer">00:00</div>
+            </header>
+            <main class="content">
+                <div class="progress-bar-container">
+                    <div id="workout-progress" class="progress-bar"></div>
+                </div>
+
+                <div id="active-task-container">
+                    <!-- Active task content injected here -->
+                </div>
+            </main>
+            <footer class="workout-footer">
+                <button id="btn-prev-task" class="btn secondary">Previous</button>
+                <button id="btn-skip-task" class="btn secondary">Skip</button>
+                <button id="btn-next-task" class="btn primary">Next</button>
+            </footer>
+        </div>
+
+        <!-- Manage Workouts Screen -->
+        <div id="manage-workouts-screen" class="screen">
+            <header class="app-header">
+                <button class="icon-btn back-btn" data-target="home">←</button>
+                <h1>Manage Workouts</h1>
+                <button id="btn-add-workout" class="icon-btn">+</button>
+            </header>
+            <main class="content">
+                <div id="manage-workouts-list" class="card-list">
+                    <!-- Manage items injected here -->
+                </div>
+            </main>
+        </div>
+
+        <!-- Manage Tasks Screen -->
+        <div id="manage-tasks-screen" class="screen">
+            <header class="app-header">
+                <button class="icon-btn back-btn" data-target="home">←</button>
+                <h1>Manage Exercises</h1>
+                <button id="btn-add-task" class="icon-btn">+</button>
+            </header>
+            <main class="content">
+                <div class="search-bar">
+                    <input type="text" id="task-search" placeholder="Search exercises...">
+                </div>
+                <div id="manage-tasks-list" class="card-list">
+                    <!-- Manage items injected here -->
+                </div>
+            </main>
+        </div>
+
+        <!-- Add/Edit Task Screen -->
+        <div id="edit-task-screen" class="screen">
+            <header class="app-header">
+                <button class="icon-btn back-btn" data-target="manage-tasks">←</button>
+                <h1 id="edit-task-title">Add Exercise</h1>
+                <button id="btn-save-task" class="icon-btn">SAVE</button>
+            </header>
+            <main class="content">
+                <form id="task-form">
+                    <div class="form-group">
+                        <label>Name</label>
+                        <input type="text" id="task-name" required>
+                    </div>
+                    <div class="form-group">
+                        <label>Target Muscle / Tips</label>
+                        <input type="text" id="task-tips">
+                    </div>
+                    <div class="form-group">
+                        <label>Instructions</label>
+                        <textarea id="task-instructions" rows="3"></textarea>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Default Sets</label>
+                            <input type="number" id="task-sets" value="3">
+                        </div>
+                        <div class="form-group">
+                            <label>Default Reps</label>
+                            <input type="number" id="task-reps" value="10">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Video</label>
+                        <input type="file" id="task-video" accept="video/*">
+                        <div id="video-preview-container"></div>
+                    </div>
+                </form>
+            </main>
+        </div>
+
+        <!-- Edit Workout Tasks Screen -->
+        <div id="edit-workout-tasks-screen" class="screen">
+            <header class="app-header">
+                <button class="icon-btn back-btn" id="btn-back-from-edit-workout">←</button>
+                <h1>Edit Workout</h1>
+                <button id="btn-add-task-to-workout" class="icon-btn">+</button>
+            </header>
+            <main class="content">
+                <div id="workout-edit-list" class="card-list">
+                    <!-- Draggable list items -->
+                </div>
+            </main>
+        </div>
+
+        <!-- Task Selection Screen (for adding to workout) -->
+        <div id="task-selection-screen" class="screen">
+            <header class="app-header">
+                <button class="icon-btn back-btn" id="btn-back-from-selection">←</button>
+                <h1>Select Exercises</h1>
+                <button id="btn-confirm-selection" class="icon-btn">ADD</button>
+            </header>
+            <main class="content">
+                <div class="search-bar">
+                    <input type="text" id="selection-search" placeholder="Search...">
+                </div>
+                <div id="selection-list" class="card-list">
+                    <!-- Checkbox list items -->
+                </div>
+            </main>
+        </div>
+
+        <!-- History Screen -->
+        <div id="history-screen" class="screen">
+            <header class="app-header">
+                <button class="icon-btn back-btn" data-target="manage-tasks">←</button>
+                <h1 id="history-title">History</h1>
+            </header>
+            <main class="content">
+                <div id="history-list" class="card-list">
+                    <!-- History items -->
+                </div>
+            </main>
+        </div>
+
+        <!-- Sync Screen -->
+        <div id="sync-screen" class="screen">
+            <header class="app-header">
+                <button class="icon-btn back-btn" data-target="home">←</button>
+                <h1>Settings & Sync</h1>
+            </header>
+            <main class="content">
+                <div class="card">
+                    <h3>GitHub Sync</h3>
+                    <p class="text-small">Sync your data across devices using GitHub Gists.</p>
+
+                    <div id="sync-auth-section">
+                        <div class="form-group">
+                            <label>Personal Access Token</label>
+                            <input type="password" id="github-token" placeholder="ghp_...">
+                        </div>
+                        <button id="btn-connect-github" class="btn primary full-width">Connect</button>
+                    </div>
+
+                    <div id="sync-actions-section" class="hidden">
+                        <p class="status-text" id="sync-status">Connected</p>
+                        <div class="button-group">
+                            <button id="btn-sync-upload" class="btn secondary">Upload to GitHub</button>
+                            <button id="btn-sync-download" class="btn secondary">Download from GitHub</button>
+                        </div>
+                        <button id="btn-disconnect" class="btn danger full-width mt-2">Disconnect</button>
+                    </div>
+                </div>
+
+                <div class="card mt-2">
+                    <h3>Data Management</h3>
+                    <button id="btn-export-json" class="btn secondary full-width">Export JSON Backup</button>
+                    <button id="btn-clear-history" class="btn danger full-width mt-2">Clear History</button>
+                </div>
+            </main>
         </div>
     </div>
 
-    <!-- Edit Task Screen -->
-    <div id="edit-task-screen" class="screen">
-        <header class="app-header">
-            <button class="back-button" onclick="navigate('edit')">← Back</button>
-            <h1>Edit Exercise</h1>
-        </header>
-        <div class="edit-task-content">
-            <div class="edit-field">
-                <label>Task Name</label>
-                <input type="text" id="edit-task-name" placeholder="Enter task name" />
-            </div>
-            <div class="edit-field">
-                <label>Target Muscle</label>
-                <textarea id="edit-task-tips" placeholder="Enter target muscle (optional)" rows="8"></textarea>
-            </div>
-            <div class="edit-field">
-                <label>Instructions</label>
-                <textarea id="edit-task-instructions" placeholder="Enter instructions (optional)" rows="8"></textarea>
-            </div>
-            <div class="edit-field">
-                <label>Default Sets</label>
-                <input type="number" id="edit-task-default-sets" placeholder="Default number of sets" min="1" />
-            </div>
-            <div class="edit-field">
-                <label>Default Reps per Set</label>
-                <input type="number" id="edit-task-default-reps" placeholder="Default reps per set" min="1" />
-            </div>
-            <div class="edit-field">
-                <label>Video (Optional)</label>
-                <input type="file" id="edit-task-video" accept="video/*" />
-                <p class="help-text">Select a new video file to replace the current one (optional)</p>
-                <button class="outlined-button" id="remove-video-button" onclick="removeVideoFromTask()" style="display: none; margin-top: 8px;">Remove Video</button>
-            </div>
-            <div class="edit-field">
-                <button class="primary-button" onclick="saveEditedTask()" style="width: 100%;">Save Changes</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Workout Complete Dialog -->
-    <div id="workout-complete-dialog" class="dialog-overlay" style="display: none;">
+    <!-- Dialogs -->
+    <div id="dialog-overlay" class="overlay hidden">
         <div class="dialog">
-            <h3 id="workout-complete-title">Workout Complete!</h3>
-            <p id="workout-complete-message"></p>
-            <div class="dialog-buttons" id="workout-complete-buttons">
-                <!-- Buttons will be dynamically inserted here -->
-            </div>
-        </div>
-    </div>
-
-    <!-- History Screen -->
-    <div id="history-screen" class="screen">
-        <header class="app-header">
-            <button class="back-button" onclick="navigate('home')">← Back</button>
-            <h1 id="history-title">Task History</h1>
-        </header>
-        <div class="history-content">
-            <div id="history-list" class="history-list">
-                <!-- History items will be dynamically inserted here -->
-            </div>
-        </div>
-    </div>
-
-    <!-- Add Muscle Group Dialog -->
-    <div id="add-muscle-group-dialog" class="dialog-overlay" style="display: none;">
-        <div class="dialog">
-            <h3>Add New Workout</h3>
-            <input type="text" id="new-muscle-group-name" placeholder="Enter workout name" 
-                   style="width: 100%; padding: 12px; margin: 16px 0; border: 2px solid var(--border-color); border-radius: 8px; font-size: 16px;"
-                   onkeypress="if(event.key === 'Enter') saveNewMuscleGroup()" />
-            <div class="dialog-buttons">
-                <button class="outlined-button" onclick="closeAddWorkoutDialog()">Cancel</button>
-                <button class="primary-button" onclick="saveNewWorkout()" id="add-workout-button">Add</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Manage Muscle Groups Screen -->
-    <div id="manage-muscle-groups-screen" class="screen">
-        <header class="app-header">
-            <button class="back-button" onclick="navigate('home')">← Back</button>
-            <h1>Manage Workouts</h1>
-            <button class="text-button" id="muscle-group-order-toggle" onclick="toggleWorkoutOrderMode()">ORDER</button>
-        </header>
-        <div class="edit-content">
-            <div style="padding: 8px 16px;">
-                <button class="outlined-button" onclick="showAddWorkoutDialog()" style="width: 100%; margin-bottom: 16px;">+ Add Workout</button>
-            </div>
-            <div id="muscle-groups-list" class="tasks-list">
-                <!-- Workouts will be dynamically inserted here -->
-            </div>
-        </div>
-    </div>
-
-    <!-- Manage Tasks Screen -->
-    <div id="manage-tasks-screen" class="screen">
-        <header class="app-header">
-            <button class="back-button" onclick="navigate('home')">← Back</button>
-            <h1>Manage Tasks</h1>
-            <button class="text-button" id="task-order-toggle" onclick="toggleTaskOrderMode()">ORDER</button>
-        </header>
-        <div class="edit-content">
-            <div style="padding: 8px 16px;">
-                <button class="outlined-button" onclick="showAddTaskScreen()" style="width: 100%; margin-bottom: 16px;">+ Add Task</button>
-            </div>
-            <div id="all-tasks-list" class="tasks-list">
-                <!-- All tasks will be dynamically inserted here -->
-            </div>
-        </div>
-    </div>
-
-    <!-- Edit History Entry Dialog -->
-    <div id="edit-history-entry-dialog" class="dialog-overlay" style="display: none;">
-        <div class="dialog" style="max-width: 600px; max-height: 80vh; overflow-y: auto;">
-            <h3>Edit Workout Entry</h3>
-            <div class="edit-field">
-                <label>Date</label>
-                <input type="datetime-local" id="edit-entry-date" />
-            </div>
-            <div id="edit-entry-sets-container" style="margin: 16px 0;">
-                <!-- Sets will be dynamically inserted here -->
-            </div>
-            <button class="outlined-button" onclick="addSetToHistoryEntry()" style="width: 100%; margin-bottom: 16px;">+ Add Set</button>
-            <div class="dialog-buttons">
-                <button class="outlined-button" onclick="closeEditHistoryEntryDialog()">Cancel</button>
-                <button class="primary-button delete-button" onclick="deleteHistoryEntry()" style="background-color: var(--error-color);">Delete</button>
-                <button class="primary-button" onclick="saveEditedHistoryEntry()">Save</button>
-            </div>
-        </div>
-    </div>
-
-
-    <!-- Delete Confirmation Dialog -->
-    <div id="delete-dialog" class="dialog-overlay" style="display: none;">
-        <div class="dialog">
-            <h3>Delete Task</h3>
-            <p id="delete-message">Are you sure you want to delete this task? All logged history for this exercise will also be removed.</p>
-            <div class="dialog-buttons">
-                <button class="outlined-button" onclick="closeDeleteDialog()">Cancel</button>
-                <button class="primary-button delete-button" onclick="confirmDelete()">Delete</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Database Wipe Warning Dialog -->
-    <div id="database-wipe-dialog" class="dialog-overlay" style="display: none;">
-        <div class="dialog" style="max-width: 500px;">
-            <h3 style="color: var(--error-color);">⚠️ Warning: Clear Workout History</h3>
-            <p style="margin: 16px 0; font-weight: 500;">This will permanently delete:</p>
-            <ul style="text-align: left; margin: 16px 0; padding-left: 24px;">
-                <li>All workout history (log entries)</li>
-            </ul>
-            <p style="margin: 16px 0; font-weight: 500; color: var(--primary-color);">
-                The following will be preserved:
-            </p>
-            <ul style="text-align: left; margin: 16px 0; padding-left: 24px; color: var(--primary-color);">
-                <li>All workouts (muscle groups)</li>
-                <li>All exercises (tasks)</li>
-                <li>All videos</li>
-            </ul>
-            <p style="margin: 16px 0; color: var(--error-color); font-weight: 500;">
-                This action CANNOT be undone!
-            </p>
-            <p style="margin: 16px 0; font-size: 14px; color: var(--text-secondary);">
-                Note: If you have synced to GitHub, you can download your data again. Otherwise, all data will be lost.
-            </p>
-            <div style="margin: 24px 0; padding: 16px; background-color: #fff3cd; border-radius: 8px; border: 2px solid #ffc107;">
-                <p style="margin: 0; font-weight: 500;">Type <strong>"DELETE"</strong> to confirm:</p>
-                <input type="text" id="wipe-confirm-input" placeholder="Type DELETE here" style="width: 100%; padding: 12px; margin-top: 8px; border: 2px solid var(--border-color); border-radius: 8px; font-size: 16px;" />
-            </div>
-            <div class="dialog-buttons">
-                <button class="outlined-button" onclick="closeDatabaseWipeDialog()">Cancel</button>
-                <button class="primary-button delete-button" onclick="confirmDatabaseWipe()" id="confirm-wipe-button" disabled>Clear History</button>
+            <h3 id="dialog-title">Title</h3>
+            <div id="dialog-content">Content</div>
+            <div class="dialog-actions">
+                <button id="btn-dialog-cancel" class="btn secondary">Cancel</button>
+                <button id="btn-dialog-confirm" class="btn primary">Confirm</button>
             </div>
         </div>
     </div>
@@ -388,5 +242,5 @@
     <script src="github-sync.js"></script>
     <script src="app.js"></script>
 </body>
-</html>
 
+</html>
